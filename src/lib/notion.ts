@@ -10,12 +10,8 @@ export function getNotionClient() {
 }
 
 /**
- * Crea una nueva página en la base de datos de Notion con las propiedades del Examen.
- * Propiedades estándar esperadas en la DB de Notion:
- * - Title / Nombre (title)
- * - Date / Fecha (date)
- * - Priority / Prioridad (select)
- * - Type / Tipo (select)
+ * Crea una nueva página en Notion adaptándose dinámicamente a las columnas
+ * reales que tenga la base de datos del usuario (Nombre, Fecha, Prioridad, Tipo, etc.)
  */
 export async function createExamNotionPage(exam: ExamData) {
   const notion = getNotionClient();
@@ -26,73 +22,90 @@ export async function createExamNotionPage(exam: ExamData) {
   }
 
   try {
-    // Intentamos mapear con los nombres de propiedad especificados en los requisitos
+    // 1. Obtener la estructura real de columnas de la Base de Datos en Notion
+    const db: any = await notion.databases.retrieve({ database_id: databaseId });
+    const propertiesSchema = db.properties;
+
+    // 2. Detectar automáticamente las columnas por su tipo o nombre aproximado
+    const titlePropKey = Object.keys(propertiesSchema).find(
+      (key) => propertiesSchema[key].type === "title"
+    );
+
+    const datePropKey = Object.keys(propertiesSchema).find(
+      (key) => propertiesSchema[key].type === "date"
+    );
+
+    const priorityPropKey = Object.keys(propertiesSchema).find(
+      (key) =>
+        key.toLowerCase().includes("prior") ||
+        key.toLowerCase().includes("prio") ||
+        key.toLowerCase() === "priority"
+    );
+
+    const typePropKey = Object.keys(propertiesSchema).find(
+      (key) =>
+        key.toLowerCase().includes("tipo") ||
+        key.toLowerCase().includes("type") ||
+        key.toLowerCase() === "tipo"
+    );
+
+    if (!titlePropKey) {
+      throw new Error("No se encontró ninguna columna de tipo Título (title) en tu base de datos de Notion.");
+    }
+
+    // 3. Construir el objeto de propiedades de forma dinámica y segura
+    const pageProperties: Record<string, any> = {
+      [titlePropKey]: {
+        title: [
+          {
+            text: {
+              content: exam.name,
+            },
+          },
+        ],
+      },
+    };
+
+    // Asignar fecha si la columna existe en Notion
+    if (datePropKey) {
+      pageProperties[datePropKey] = {
+        date: {
+          start: exam.date,
+        },
+      };
+    }
+
+    // Asignar prioridad si la columna existe y es de tipo select o status
+    if (priorityPropKey) {
+      const type = propertiesSchema[priorityPropKey].type;
+      if (type === "select") {
+        pageProperties[priorityPropKey] = { select: { name: exam.priority } };
+      } else if (type === "status") {
+        pageProperties[priorityPropKey] = { status: { name: exam.priority } };
+      }
+    }
+
+    // Asignar tipo si la columna existe y es de tipo select o status
+    if (typePropKey) {
+      const type = propertiesSchema[typePropKey].type;
+      if (type === "select") {
+        pageProperties[typePropKey] = { select: { name: exam.type } };
+      } else if (type === "status") {
+        pageProperties[typePropKey] = { status: { name: exam.type } };
+      }
+    }
+
+    // 4. Crear la página en Notion con la estructura adaptada
     const response = await notion.pages.create({
       parent: {
         database_id: databaseId,
       },
-      properties: {
-        // Título del examen
-        Title: {
-          title: [
-            {
-              text: {
-                content: exam.name,
-              },
-            },
-          ],
-        },
-        // Fecha del examen
-        Date: {
-          date: {
-            start: exam.date,
-          },
-        },
-        // Prioridad ("High", "Medium", "Low")
-        Priority: {
-          select: {
-            name: exam.priority,
-          },
-        },
-        // Tipo ("Exam", "Quiz", etc.)
-        Type: {
-          select: {
-            name: exam.type,
-          },
-        },
-      },
+      properties: pageProperties,
     });
 
     return response;
   } catch (error: any) {
     console.error("Error al crear la entrada en Notion:", error);
-    // Si la base de datos usa nombres en español como "Nombre" o "Fecha", intentamos un fallback inteligente
-    if (error.code === "validation_error" && error.message?.includes("is not a property")) {
-      try {
-        const fallbackResponse = await notion.pages.create({
-          parent: { database_id: databaseId },
-          properties: {
-            Nombre: {
-              title: [{ text: { content: exam.name } }],
-            },
-            Fecha: {
-              date: { start: exam.date },
-            },
-            Prioridad: {
-              select: { name: exam.priority },
-            },
-            Tipo: {
-              select: { name: exam.type },
-            },
-          },
-        });
-        return fallbackResponse;
-      } catch (fallbackError: any) {
-        throw new Error(
-          `Error en propiedades de Notion: Asegúrate de que las columnas 'Title' (o 'Nombre'), 'Date' (o 'Fecha'), 'Priority' y 'Type' existan en tu base de datos.`
-        );
-      }
-    }
     throw new Error(
       error.body?.message || error.message || "Fallo en la comunicación con Notion API"
     );
