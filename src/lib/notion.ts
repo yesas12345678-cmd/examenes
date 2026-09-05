@@ -10,104 +10,129 @@ export function getNotionClient() {
 }
 
 /**
- * Crea una nueva página en Notion adaptándose dinámicamente a las columnas
- * reales que tenga la base de datos del usuario (Nombre, Fecha, Prioridad, Tipo, etc.)
+ * Crea una nueva página en Notion adaptándose dinámicamente a la base de datos conectada.
+ * Si el ID proporcionado es una Página en vez de una Base de Datos, busca automáticamente 
+ * la base de datos contenida o accesible.
  */
 export async function createExamNotionPage(exam: ExamData) {
   const notion = getNotionClient();
-  const databaseId = process.env.NOTION_DATABASE_ID;
+  let targetDatabaseId = process.env.NOTION_DATABASE_ID;
 
-  if (!databaseId) {
+  if (!targetDatabaseId) {
     throw new Error("La variable de entorno NOTION_DATABASE_ID no está configurada.");
   }
 
+  // Quitar guiones u otros caracteres si los tuviera
+  targetDatabaseId = targetDatabaseId.trim().replace(/-/g, "");
+
+  let db: any = null;
+
   try {
-    // 1. Obtener la estructura real de columnas de la Base de Datos en Notion
-    const db: any = await notion.databases.retrieve({ database_id: databaseId });
-    const propertiesSchema = db.properties;
+    // 1. Intentar obtener la base de datos directamente por su ID
+    db = await notion.databases.retrieve({ database_id: targetDatabaseId });
+  } catch (err: any) {
+    console.warn("Intento directo de base de datos falló, buscando bases de datos compartidas con la integración...", err.message);
 
-    // 2. Detectar automáticamente las columnas por su tipo o nombre aproximado
-    const titlePropKey = Object.keys(propertiesSchema).find(
-      (key) => propertiesSchema[key].type === "title"
-    );
+    // Fallback: Si el ID ingresado era un ID de Página o falló, buscar las bases de datos
+    // a las que la conexión 'StudySync' tiene acceso mediante notion.search
+    try {
+      const searchRes = await notion.search({
+        filter: { value: "database", property: "object" },
+      });
 
-    const datePropKey = Object.keys(propertiesSchema).find(
-      (key) => propertiesSchema[key].type === "date"
-    );
-
-    const priorityPropKey = Object.keys(propertiesSchema).find(
-      (key) =>
-        key.toLowerCase().includes("prior") ||
-        key.toLowerCase().includes("prio") ||
-        key.toLowerCase() === "priority"
-    );
-
-    const typePropKey = Object.keys(propertiesSchema).find(
-      (key) =>
-        key.toLowerCase().includes("tipo") ||
-        key.toLowerCase().includes("type") ||
-        key.toLowerCase() === "tipo"
-    );
-
-    if (!titlePropKey) {
-      throw new Error("No se encontró ninguna columna de tipo Título (title) en tu base de datos de Notion.");
-    }
-
-    // 3. Construir el objeto de propiedades de forma dinámica y segura
-    const pageProperties: Record<string, any> = {
-      [titlePropKey]: {
-        title: [
-          {
-            text: {
-              content: exam.name,
-            },
-          },
-        ],
-      },
-    };
-
-    // Asignar fecha si la columna existe en Notion
-    if (datePropKey) {
-      pageProperties[datePropKey] = {
-        date: {
-          start: exam.date,
-        },
-      };
-    }
-
-    // Asignar prioridad si la columna existe y es de tipo select o status
-    if (priorityPropKey) {
-      const type = propertiesSchema[priorityPropKey].type;
-      if (type === "select") {
-        pageProperties[priorityPropKey] = { select: { name: exam.priority } };
-      } else if (type === "status") {
-        pageProperties[priorityPropKey] = { status: { name: exam.priority } };
+      if (searchRes.results && searchRes.results.length > 0) {
+        db = searchRes.results[0];
+        targetDatabaseId = db.id;
+        console.log(`Base de datos encontrada automáticamente mediante búsqueda: ${db.id}`);
+      } else {
+        throw new Error(
+          `No se encontró ninguna Base de Datos. Recuerda hacer clic en '...' -> 'Connections' -> Añadir 'StudySync' en tu vista de tabla de Notion. Detalle: ${err.message}`
+        );
       }
+    } catch (searchErr: any) {
+      throw new Error(
+        `Error accediendo a Notion: ${err.message}. Asegúrate de conectar 'StudySync' en tu Notion.`
+      );
     }
+  }
 
-    // Asignar tipo si la columna existe y es de tipo select o status
-    if (typePropKey) {
-      const type = propertiesSchema[typePropKey].type;
-      if (type === "select") {
-        pageProperties[typePropKey] = { select: { name: exam.type } };
-      } else if (type === "status") {
-        pageProperties[typePropKey] = { status: { name: exam.type } };
-      }
-    }
+  // 2. Detectar dinámicamente el esquema de columnas de la base de datos encontrada
+  const propertiesSchema = db.properties || {};
 
-    // 4. Crear la página en Notion con la estructura adaptada
-    const response = await notion.pages.create({
-      parent: {
-        database_id: databaseId,
-      },
-      properties: pageProperties,
-    });
+  const titlePropKey = Object.keys(propertiesSchema).find(
+    (key) => propertiesSchema[key].type === "title"
+  );
 
-    return response;
-  } catch (error: any) {
-    console.error("Error al crear la entrada en Notion:", error);
+  const datePropKey = Object.keys(propertiesSchema).find(
+    (key) => propertiesSchema[key].type === "date"
+  );
+
+  const priorityPropKey = Object.keys(propertiesSchema).find(
+    (key) =>
+      key.toLowerCase().includes("prior") ||
+      key.toLowerCase().includes("prio") ||
+      key.toLowerCase() === "priority"
+  );
+
+  const typePropKey = Object.keys(propertiesSchema).find(
+    (key) =>
+      key.toLowerCase().includes("tipo") ||
+      key.toLowerCase().includes("type") ||
+      key.toLowerCase() === "tipo"
+  );
+
+  if (!titlePropKey) {
     throw new Error(
-      error.body?.message || error.message || "Fallo en la comunicación con Notion API"
+      `La base de datos de Notion no tiene ninguna columna de tipo Título (title). Columnas encontradas: ${Object.keys(propertiesSchema).join(", ")}`
     );
   }
+
+  // 3. Construir el objeto de propiedades de la página
+  const pageProperties: Record<string, any> = {
+    [titlePropKey]: {
+      title: [
+        {
+          text: {
+            content: exam.name,
+          },
+        },
+      ],
+    },
+  };
+
+  if (datePropKey) {
+    pageProperties[datePropKey] = {
+      date: {
+        start: exam.date,
+      },
+    };
+  }
+
+  if (priorityPropKey) {
+    const type = propertiesSchema[priorityPropKey].type;
+    if (type === "select") {
+      pageProperties[priorityPropKey] = { select: { name: exam.priority } };
+    } else if (type === "status") {
+      pageProperties[priorityPropKey] = { status: { name: exam.priority } };
+    }
+  }
+
+  if (typePropKey) {
+    const type = propertiesSchema[typePropKey].type;
+    if (type === "select") {
+      pageProperties[typePropKey] = { select: { name: exam.type } };
+    } else if (type === "status") {
+      pageProperties[typePropKey] = { status: { name: exam.type } };
+    }
+  }
+
+  // 4. Crear la nueva página en Notion
+  const response = await notion.pages.create({
+    parent: {
+      database_id: targetDatabaseId!,
+    },
+    properties: pageProperties,
+  });
+
+  return response;
 }

@@ -125,16 +125,16 @@ export default function Dashboard() {
             type: "success",
             message: json.message || "¡Sincronización completada con éxito!",
           });
-          // Limpiar selección tras éxito
           setSelectedSlotIds([]);
         }
-        // Recargar eventos para reflejar los nuevos nombres de estudio
+        window.scrollTo({ top: 0, behavior: "smooth" });
         fetchEvents();
       } else {
         setSyncStatus({
           type: "error",
-          message: json.error || "Ocurrió un error al sincronizar con las APIs.",
+          message: json.error || json.message || "Ocurrió un error al sincronizar con las APIs.",
         });
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err: any) {
       setSyncStatus({
