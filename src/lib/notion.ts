@@ -33,17 +33,17 @@ export async function createExamNotionPage(exam: ExamData) {
   } catch (err: any) {
     console.warn("Intento directo de base de datos falló, buscando bases de datos compartidas con la integración...", err.message);
 
-    // Fallback: Si el ID ingresado era un ID de Página o falló, buscar las bases de datos
-    // a las que la conexión 'StudySync' tiene acceso mediante notion.search
+    // Fallback: Si el ID ingresado era un ID de Página o falló, buscar las bases de datos accesibles
     try {
-      const searchRes = await notion.search({
-        filter: { value: "database", property: "object" },
+      const searchRes: any = await notion.search({
+        filter: { value: "page", property: "object" },
       });
 
       if (searchRes.results && searchRes.results.length > 0) {
-        db = searchRes.results[0];
-        targetDatabaseId = db.id;
-        console.log(`Base de datos encontrada automáticamente mediante búsqueda: ${db.id}`);
+        // Buscar algún resultado que sea base de datos o usar el primero
+        const dbResult = searchRes.results.find((item: any) => item.object === "database") || searchRes.results[0];
+        db = dbResult;
+        targetDatabaseId = dbResult.id;
       } else {
         throw new Error(
           `No se encontró ninguna Base de Datos. Recuerda hacer clic en '...' -> 'Connections' -> Añadir 'StudySync' en tu vista de tabla de Notion. Detalle: ${err.message}`
