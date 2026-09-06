@@ -5,7 +5,7 @@ import { useSession, signIn } from "next-auth/react";
 import ExamForm from "@/components/ExamForm";
 import CalendarViewer from "@/components/CalendarViewer";
 import { ExamData, CalendarSlot, ApiResponse } from "@/types";
-import { Sparkles, Send, CheckCircle2, AlertTriangle, XCircle, LogIn, ShieldCheck } from "lucide-react";
+import { Gamepad2, Send, CheckCircle2, AlertTriangle, XCircle, LogIn, ShieldCheck, Trophy } from "lucide-react";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -116,7 +116,7 @@ export default function Dashboard() {
       if (res.ok && json.success) {
         setSyncStatus({
           type: "success",
-          message: json.message || "¡Bloques de estudio actualizados con éxito en Google Calendar!",
+          message: json.message || "¡Bloques de estudio actualizados con éxito en tu Google Calendar!",
         });
         setSelectedSlotIds([]);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -142,31 +142,31 @@ export default function Dashboard() {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-6 px-4">
         <div className="relative">
-          <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-3xl blur opacity-75 animate-pulse"></div>
-          <div className="relative p-5 rounded-3xl bg-slate-950 text-indigo-400 border border-slate-800 shadow-2xl flex items-center justify-center">
-            <Sparkles className="w-12 h-12" />
+          <div className="absolute -inset-1 bg-yellow-400 rounded-3xl blur opacity-75 animate-pulse"></div>
+          <div className="relative p-5 rounded-3xl bg-black text-yellow-400 border border-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.4)] flex items-center justify-center">
+            <Gamepad2 className="w-12 h-12" />
           </div>
         </div>
 
         <div className="space-y-2.5">
-          <h2 className="text-3xl font-extrabold text-white tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
-            Bienvenido a StudySync
+          <h2 className="text-3xl font-black text-yellow-400 tracking-wider uppercase drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">
+            StudySync ARCADE
           </h2>
-          <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
-            Conecta tu cuenta de Google Calendar para sincronizar tus bloques de estudio en tiempo real con notificaciones directas.
+          <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto font-medium">
+            Conecta tu cuenta de Google Calendar para gestionar tus sesiones de estudio en una interfaz Cyber-Arcade de alto rendimiento.
           </p>
         </div>
 
         <button
           onClick={() => signIn("google")}
-          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500 text-white font-bold text-sm rounded-2xl shadow-[0_0_30px_rgba(99,102,241,0.3)] transition-all duration-300 transform active:scale-95"
+          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.5)] transition-all duration-300 transform active:scale-95"
         >
-          <LogIn className="w-5 h-5" />
+          <LogIn className="w-5 h-5 stroke-[3]" />
           <span>Iniciar Sesión con Google</span>
         </button>
 
-        <p className="text-[11px] text-slate-500 flex items-center gap-1.5 justify-center">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Integración oficial segura de Google OAuth 2.0
+        <p className="text-[11px] text-zinc-500 flex items-center gap-1.5 justify-center font-bold">
+          <ShieldCheck className="w-3.5 h-3.5 text-yellow-400" /> Autenticación segura vía Google OAuth 2.0
         </p>
       </div>
     );
@@ -174,38 +174,38 @@ export default function Dashboard() {
 
   return (
     <div className="relative space-y-6 pb-28 min-h-[90vh]">
-      {/* Background Radial Lights */}
-      <div className="fixed inset-0 pointer-events-none z-0 bg-cyber-glow"></div>
+      {/* Arcade Grid Background */}
+      <div className="fixed inset-0 pointer-events-none z-0 bg-arcade-glow"></div>
 
       <div className="relative z-10 space-y-6">
         {/* Banner de Mensajes / Estado */}
         {syncStatus && (
           <div
-            className={`p-4 rounded-2xl border flex items-start gap-3 transition-all duration-300 shadow-[0_0_30px_rgba(0,0,0,0.4)] ${
+            className={`p-4 rounded-2xl border flex items-start gap-3 transition-all duration-300 shadow-[0_0_30px_rgba(0,0,0,0.8)] ${
               syncStatus.type === "success"
-                ? "bg-emerald-950/60 border-emerald-500/50 text-emerald-200 shadow-emerald-900/20"
+                ? "bg-yellow-950/60 border-yellow-400 text-yellow-200 shadow-yellow-900/30"
                 : syncStatus.type === "warning"
-                ? "bg-amber-950/60 border-amber-500/50 text-amber-200 shadow-amber-900/20"
-                : "bg-rose-950/60 border-rose-500/50 text-rose-200 shadow-rose-900/20"
+                ? "bg-amber-950/60 border-amber-500/60 text-amber-200 shadow-amber-900/30"
+                : "bg-rose-950/60 border-rose-500/60 text-rose-200 shadow-rose-900/30"
             }`}
           >
-            {syncStatus.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />}
+            {syncStatus.type === "success" && <CheckCircle2 className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />}
             {syncStatus.type === "warning" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />}
             {syncStatus.type === "error" && <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />}
-            <div className="text-xs font-semibold leading-relaxed flex-1">
+            <div className="text-xs font-bold leading-relaxed flex-1 tracking-wide">
               {syncStatus.message}
             </div>
           </div>
         )}
 
-        {/* Grid Principal (Izquierda: Formulario, Derecha: Visor Calendario) */}
+        {/* Grid Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Izquierda: Formulario */}
           <div className="lg:col-span-5 space-y-6">
             <ExamForm examData={examData} onChange={setExamData} />
           </div>
 
-          {/* Derecha: Visor de Calendario */}
+          {/* Derecha: Visor Calendario */}
           <div className="lg:col-span-7">
             <CalendarViewer
               events={events}
@@ -219,29 +219,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Barra Acción Flotante Inferior de Cristal */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950/80 backdrop-blur-2xl border-t border-slate-800/90 z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
+      {/* Barra Acción Flotante Inferior Arcade */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-black/90 backdrop-blur-2xl border-t border-yellow-500/40 z-40 shadow-[0_-10px_30px_rgba(250,204,21,0.15)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-          <div className="text-xs text-slate-400 hidden sm:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
-            <span>Examen: <strong className="text-slate-100 font-bold">{examData.name || "Sin nombre"}</strong></span>
-            <span className="text-slate-600">|</span>
-            <span>Bloques: <strong className="text-indigo-400 font-bold">{selectedSlotIds.length} seleccionados</strong></span>
+          <div className="text-xs text-zinc-400 hidden sm:flex items-center gap-2 font-bold uppercase tracking-wider">
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-ping"></span>
+            <span>Examen: <strong className="text-yellow-400 font-black">{examData.name || "Sin nombre"}</strong></span>
+            <span className="text-zinc-700">|</span>
+            <span>Bloques: <strong className="text-white font-black">{selectedSlotIds.length} seleccionados</strong></span>
           </div>
 
           <button
             onClick={handleSaveAndSync}
             disabled={isSyncing}
-            className="w-full sm:w-auto px-8 py-3.5 animate-shimmer text-white font-extrabold text-sm rounded-2xl shadow-[0_0_30px_rgba(99,102,241,0.4)] transition-all duration-300 flex items-center justify-center gap-3 disabled:opacity-50 transform active:scale-95 ml-auto tracking-wide"
+            className="w-full sm:w-auto px-9 py-4 animate-arcade-shimmer text-black font-black text-sm uppercase tracking-widest rounded-2xl shadow-[0_0_30px_rgba(250,204,21,0.6)] transition-all duration-300 flex items-center justify-center gap-3 disabled:opacity-50 transform active:scale-95 ml-auto border border-yellow-400"
           >
             {isSyncing ? (
               <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Sincronizando con Google Calendar...</span>
+                <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                <span>Sincronizando...</span>
               </>
             ) : (
               <>
-                <Send className="w-4.5 h-4.5 text-white" />
+                <Send className="w-4.5 h-4.5 text-black stroke-[3]" />
                 <span>Guardar y Sincronizar</span>
               </>
             )}
@@ -251,4 +251,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
 

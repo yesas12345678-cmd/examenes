@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CalendarSlot, EffortLevel } from "@/types";
-import { Calendar as CalendarIcon, CheckCircle2, Clock, RefreshCw, AlertCircle, Sparkles, Moon, Filter } from "lucide-react";
+import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Sparkles, Moon, Filter, Trophy } from "lucide-react";
 import { format, parseISO, differenceInMinutes } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -64,7 +64,6 @@ export default function CalendarViewer({
     const targetStart = parseISO(targetSlot.start);
     const targetEnd = parseISO(targetSlot.end);
 
-    // Buscar bloque que empiece justo cuando termine targetSlot (siguiente hora)
     const nextSlot = events.find((e) => {
       if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
       const start = parseISO(e.start);
@@ -73,7 +72,6 @@ export default function CalendarViewer({
 
     if (nextSlot) return nextSlot;
 
-    // Si no hay siguiente, buscar bloque que termine justo cuando empiece targetSlot (hora anterior)
     const prevSlot = events.find((e) => {
       if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
       const end = parseISO(e.end);
@@ -92,14 +90,12 @@ export default function CalendarViewer({
     const isAlreadySelected = selectedSlotIds.includes(slot.id);
 
     if (isAlreadySelected) {
-      // Deseleccionar el bloque y su pareja consecutiva si existe
       const sibling = findConsecutiveSlot(slot);
       const idsToRemove = [slot.id, sibling?.id].filter(Boolean) as string[];
       onSelectSlots(selectedSlotIds.filter((id) => !idsToRemove.includes(id)));
       return;
     }
 
-    // Buscar pareja consecutiva
     const sibling = findConsecutiveSlot(slot);
 
     if (!sibling) {
@@ -109,7 +105,6 @@ export default function CalendarViewer({
 
     const pairIds = [slot.id, sibling.id];
 
-    // Verificar si seleccionar esta pareja excede el máximo permitido
     let newSelected = [...selectedSlotIds];
 
     pairIds.forEach((id) => {
@@ -118,7 +113,6 @@ export default function CalendarViewer({
       }
     });
 
-    // Si excede el máximo de bloques, descartar la pareja más antigua
     if (newSelected.length > maxSlots) {
       newSelected = newSelected.slice(newSelected.length - maxSlots);
     }
@@ -127,17 +121,17 @@ export default function CalendarViewer({
   };
 
   return (
-    <div className="bg-slate-900/60 backdrop-blur-2xl border border-slate-800/90 hover:border-indigo-500/30 rounded-3xl p-6 shadow-[0_0_40px_rgba(0,0,0,0.5)] transition-all duration-300 flex flex-col h-full min-h-[550px]">
+    <div className="bg-black/90 backdrop-blur-2xl border border-yellow-500/40 hover:border-yellow-400 rounded-3xl p-6 shadow-[0_0_35px_rgba(250,204,21,0.15)] transition-all duration-300 flex flex-col h-full min-h-[550px]">
       {/* Header del Visor */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 flex-wrap gap-4">
+      <div className="flex items-center justify-between pb-4 border-b border-zinc-800 flex-wrap gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-            <CalendarIcon className="w-5 h-5" />
+          <div className="p-3 rounded-2xl bg-yellow-400/10 text-yellow-400 border border-yellow-400/30 shadow-[0_0_15px_rgba(250,204,21,0.2)]">
+            <Gamepad2 className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-100 tracking-tight">Visor de Time Blocking</h2>
-            <p className="text-xs text-slate-400">
-              Google Calendar con bloques de noche garantizados (21:10-23:00 en L, M, X, J y D)
+            <h2 className="text-base font-black text-yellow-400 uppercase tracking-wider">Visor de Time Blocking</h2>
+            <p className="text-xs text-zinc-400 font-medium">
+              Bloques de noche garantizados (21:10-23:00 en L, M, X, J y D)
             </p>
           </div>
         </div>
@@ -146,67 +140,67 @@ export default function CalendarViewer({
           <button
             onClick={onRefresh}
             disabled={isLoading}
-            className="p-2.5 bg-slate-950/80 hover:bg-slate-800/80 text-slate-300 rounded-xl transition-all duration-200 border border-slate-800 hover:border-slate-700 disabled:opacity-50 active:scale-95 shadow-inner"
+            className="p-2.5 bg-zinc-950 hover:bg-zinc-900 text-yellow-400 rounded-xl transition-all duration-200 border border-zinc-800 hover:border-yellow-500/40 disabled:opacity-50 active:scale-95 shadow-inner"
             title="Recargar eventos"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-indigo-400" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-yellow-400" : ""}`} />
           </button>
         </div>
       </div>
 
-      {/* Pestañas de Filtrado */}
-      <div className="mt-4 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800/90">
+      {/* Pestañas de Filtrado Arcade */}
+      <div className="mt-4 flex items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-950 border border-zinc-800">
         <button
           onClick={() => setActiveFilter("free")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
             activeFilter === "free"
-              ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]"
-              : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+              ? "bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.4)]"
+              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Bloques Libres</span>
+          <span>🕹️ Libres</span>
         </button>
 
         <button
           onClick={() => setActiveFilter("night")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
             activeFilter === "night"
-              ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]"
-              : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+              ? "bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.4)]"
+              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
           }`}
         >
-          <Moon className="w-3.5 h-3.5 text-purple-300" />
-          <span>🌙 Bloques de Noche</span>
+          <Moon className="w-3.5 h-3.5 text-yellow-400" />
+          <span>🌙 Noche</span>
         </button>
 
         <button
           onClick={() => setActiveFilter("all")}
-          className={`py-2 px-3 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 ${
+          className={`py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
             activeFilter === "all"
-              ? "bg-slate-800 text-slate-100 border border-slate-700"
-              : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+              ? "bg-zinc-800 text-yellow-300 border border-yellow-500/40"
+              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
           }`}
         >
           <Filter className="w-3.5 h-3.5" />
-          <span>Todos</span>
+          <span>👾 Todos</span>
         </button>
       </div>
 
       {/* Banner de Estado de Selección */}
-      <div className="mt-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-950 border border-indigo-500/30 flex items-center justify-between flex-wrap gap-2 text-xs shadow-inner">
-        <div className="flex items-center gap-2 text-indigo-200">
-          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>
-            Objetivo: <strong className="text-white font-bold">{maxSessions} sesión(es)</strong> = <strong className="text-white font-bold">{maxSlots} bloques (horas)</strong>
+      <div className="mt-3.5 p-3.5 rounded-2xl bg-yellow-950/20 border border-yellow-500/30 flex items-center justify-between flex-wrap gap-2 text-xs shadow-inner">
+        <div className="flex items-center gap-2 text-yellow-300">
+          <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
+          <span className="font-bold uppercase tracking-wider">
+            Misión: <strong className="text-white font-black">{maxSessions} sesión(es)</strong> = <strong className="text-white font-black">{maxSlots} horas</strong>
           </span>
         </div>
-        <div className="flex items-center gap-1.5 font-bold">
-          <span className={selectedSlotIds.length === maxSlots ? "text-emerald-400" : "text-amber-400"}>
-            Seleccionados: {selectedSlotIds.length} / {maxSlots} bloques ({selectedSlotIds.length / 2} de {maxSessions} sesiones)
+        <div className="flex items-center gap-1.5 font-black uppercase tracking-wider">
+          <span className={selectedSlotIds.length === maxSlots ? "text-yellow-400" : "text-amber-400"}>
+            Completado: {selectedSlotIds.length} / {maxSlots} horas
           </span>
           {selectedSlotIds.length === maxSlots && (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 inline" />
+            <CheckCircle2 className="w-4 h-4 text-yellow-400 inline" />
           )}
         </div>
       </div>
@@ -215,14 +209,14 @@ export default function CalendarViewer({
       <div className="mt-4 flex-1 overflow-y-auto pr-1 space-y-5 max-h-[520px] custom-scrollbar">
         {isLoading ? (
           <div className="py-24 text-center space-y-3">
-            <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin mx-auto" />
-            <p className="text-xs text-slate-400 font-medium">Cargando eventos de Google Calendar...</p>
+            <RefreshCw className="w-8 h-8 text-yellow-400 animate-spin mx-auto" />
+            <p className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Cargando eventos de Google Calendar...</p>
           </div>
         ) : Object.keys(groupedEvents).length === 0 ? (
-          <div className="py-20 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80 p-6">
-            <AlertCircle className="w-8 h-8 text-slate-500 mx-auto" />
-            <p className="text-sm font-semibold text-slate-300">No se encontraron eventos para el filtro seleccionado</p>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+          <div className="py-20 text-center space-y-3 bg-zinc-950 rounded-2xl border border-zinc-800 p-6">
+            <AlertCircle className="w-8 h-8 text-zinc-600 mx-auto" />
+            <p className="text-sm font-bold text-yellow-300 uppercase tracking-wide">Sin eventos detectados</p>
+            <p className="text-xs text-zinc-500 max-w-sm mx-auto font-medium">
               {activeFilter === "night"
                 ? "Los bloques de noche fijos (21:10 - 23:00) están disponibles en Lunes, Martes, Miércoles, Jueves y Domingo."
                 : "No hay bloques libres detectados en los próximos 14 días."}
@@ -235,9 +229,9 @@ export default function CalendarViewer({
 
             return (
               <div key={dateStr} className="space-y-2.5">
-                <div className="text-xs font-bold text-indigo-300 capitalize flex items-center justify-between tracking-wide">
+                <div className="text-xs font-black text-yellow-400 capitalize flex items-center justify-between tracking-wider uppercase">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+                    <div className="w-2 h-2 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,1)]" />
                     {formattedDate}
                   </div>
                 </div>
@@ -254,25 +248,25 @@ export default function CalendarViewer({
                         onClick={() => handleSlotClick(slot)}
                         className={`p-3.5 rounded-2xl border text-left transition-all duration-300 flex items-center justify-between group active:scale-95 ${
                           isSelected
-                            ? "bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-indigo-950/50 border-indigo-500 text-white shadow-[0_0_25px_rgba(99,102,241,0.25)] ring-1 ring-indigo-500/60"
+                            ? "bg-yellow-400/20 border-yellow-400 text-white shadow-[0_0_25px_rgba(250,204,21,0.35)] ring-1 ring-yellow-400"
                             : slot.isDefaultNightSlot
-                            ? "bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-950 hover:from-purple-900/50 hover:to-indigo-900/40 border-purple-800/60 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+                            ? "bg-yellow-950/20 hover:bg-yellow-900/30 border-yellow-600/40 text-yellow-200"
                             : slot.isTimeBlock
-                            ? "bg-slate-950/80 hover:bg-slate-900/90 border-slate-800/80 hover:border-indigo-500/40 text-slate-200"
-                            : "bg-slate-950/30 border-slate-900 text-slate-500 opacity-60 cursor-not-allowed"
+                            ? "bg-zinc-950 hover:bg-zinc-900 border-zinc-800 hover:border-yellow-500/40 text-zinc-200"
+                            : "bg-zinc-950/40 border-zinc-900 text-zinc-600 opacity-60 cursor-not-allowed"
                         }`}
                       >
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2 text-xs font-bold">
-                            <Clock className={`w-3.5 h-3.5 ${isSelected ? "text-indigo-400" : slot.isDefaultNightSlot ? "text-purple-400" : "text-slate-400"}`} />
-                            <span>{startTime} - {endTime}</span>
+                          <div className="flex items-center gap-2 text-xs font-black">
+                            <Clock className={`w-3.5 h-3.5 ${isSelected ? "text-yellow-400" : slot.isDefaultNightSlot ? "text-yellow-400" : "text-zinc-500"}`} />
+                            <span className="tracking-wide">{startTime} - {endTime}</span>
                             {slot.isDefaultNightSlot && (
-                              <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-extrabold border border-purple-500/40 flex items-center gap-1 shadow-[0_0_8px_rgba(168,85,247,0.2)]">
-                                <Moon className="w-2.5 h-2.5 text-purple-300" /> Noche Fija
+                              <span className="px-2 py-0.5 rounded bg-yellow-400/20 text-yellow-300 text-[10px] font-black uppercase tracking-wider border border-yellow-400/40 flex items-center gap-1 shadow-[0_0_8px_rgba(250,204,21,0.3)]">
+                                <Moon className="w-2.5 h-2.5 text-yellow-400" /> Noche
                               </span>
                             )}
                           </div>
-                          <p className={`text-xs ${isSelected ? "text-indigo-200 font-bold" : slot.isDefaultNightSlot ? "text-purple-300 font-semibold" : "text-slate-400 font-medium"}`}>
+                          <p className={`text-xs ${isSelected ? "text-yellow-300 font-black" : slot.isDefaultNightSlot ? "text-yellow-200 font-bold" : "text-zinc-400 font-semibold"}`}>
                             {slot.summary}
                           </p>
                         </div>
@@ -280,11 +274,11 @@ export default function CalendarViewer({
                         {(slot.isTimeBlock || slot.isDefaultNightSlot) && (
                           <div className="pl-3">
                             {isSelected ? (
-                              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.5)]">
-                                <CheckCircle2 className="w-4.5 h-4.5" />
+                              <div className="w-7 h-7 rounded-full bg-yellow-400 text-black flex items-center justify-center shadow-[0_0_15px_rgba(250,204,21,0.8)]">
+                                <CheckCircle2 className="w-4.5 h-4.5 stroke-[3]" />
                               </div>
                             ) : (
-                              <div className="w-7 h-7 rounded-full border border-slate-700/80 group-hover:border-indigo-500/60 flex items-center justify-center text-xs text-slate-400 group-hover:text-indigo-400 transition-colors">
+                              <div className="w-7 h-7 rounded-full border border-zinc-800 group-hover:border-yellow-400 flex items-center justify-center text-xs text-zinc-500 group-hover:text-yellow-400 transition-colors font-black">
                                 +
                               </div>
                             )}
@@ -302,4 +296,5 @@ export default function CalendarViewer({
     </div>
   );
 }
+
 

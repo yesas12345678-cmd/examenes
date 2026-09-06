@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #030712;
-  --foreground: #f8fafc;
+  --background: #050505;
+  --foreground: #fef08a;
 }
 
 body {
@@ -11,31 +11,33 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Scrollbar Styling */
+/* Arcade Custom Scrollbar Styling (Neon Yellow) */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(10, 10, 10, 0.8);
   border-radius: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.4);
+  background: rgba(250, 204, 21, 0.5);
   border-radius: 8px;
+  border: 1px solid rgba(250, 204, 21, 0.8);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.7);
+  background: rgba(250, 204, 21, 0.9);
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.8);
 }
 
 .color-scheme-dark {
   color-scheme: dark;
 }
 
-/* Shimmer animation for primary action buttons */
-@keyframes shimmer {
+/* Shimmer animation for Arcade primary action buttons */
+@keyframes arcade-shimmer {
   0% {
     background-position: -200% 0;
   }
@@ -44,24 +46,27 @@ body {
   }
 }
 
-.animate-shimmer {
+.animate-arcade-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(99, 102, 241, 0.9) 0%,
-    rgba(168, 85, 247, 0.9) 25%,
-    rgba(236, 72, 153, 0.9) 50%,
-    rgba(168, 85, 247, 0.9) 75%,
-    rgba(99, 102, 241, 0.9) 100%
+    #facc15 0%,
+    #fef08a 25%,
+    #eab308 50%,
+    #fef08a 75%,
+    #facc15 100%
   );
   background-size: 200% 100%;
-  animation: shimmer 4s infinite linear;
+  animation: arcade-shimmer 3s infinite linear;
 }
 
-/* Ambient Radial Glow Background */
-.bg-cyber-glow {
+/* Ambient Arcade Grid and Neon Glow Background */
+.bg-arcade-glow {
   background-image: 
-    radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
-    radial-gradient(circle at 85% 65%, rgba(168, 85, 247, 0.15) 0%, transparent 45%),
-    radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+    radial-gradient(circle at 15% 15%, rgba(250, 204, 21, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 85% 65%, rgba(234, 179, 8, 0.1) 0%, transparent 40%),
+    linear-gradient(rgba(250, 204, 21, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(250, 204, 21, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
 }
+
 
