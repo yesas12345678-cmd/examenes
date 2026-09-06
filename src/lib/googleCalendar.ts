@@ -8,8 +8,16 @@ export function getGoogleCalendarClient(accessToken: string) {
 }
 
 /**
- * Genera un ISO String formateado explícitamente para España (+02:00 CEST)
- * evitando que el servidor en UTC de Vercel desplace la hora al navegador.
+ * Formatea una fecha local como string ISO sin offset (ej: 2026-09-07T21:10:00)
+ * para garantizar que el navegador interprete exactamente 21:10 localmente sin desplazamientos.
+ */
+function createNaiveLocalIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
+  const pad = (num: number) => String(num).padStart(2, "0");
+  return `${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
+}
+
+/**
+ * Formatea una fecha con el offset de España (+02:00) para enviar a Google Calendar API
  */
 function createSpainIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
   const pad = (num: number) => String(num).padStart(2, "0");
@@ -82,17 +90,17 @@ export async function getUpcomingCalendarEvents(
       const dateNum = dayDate.getDate();
       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
 
-      const start2110 = createSpainIsoString(year, month, dateNum, 21, 10);
-      const end2200 = createSpainIsoString(year, month, dateNum, 22, 0);
+      const start2110 = createNaiveLocalIsoString(year, month, dateNum, 21, 10);
+      const end2200 = createNaiveLocalIsoString(year, month, dateNum, 22, 0);
 
-      const start2200 = createSpainIsoString(year, month, dateNum, 22, 0);
-      const end2300 = createSpainIsoString(year, month, dateNum, 23, 0);
+      const start2200 = createNaiveLocalIsoString(year, month, dateNum, 22, 0);
+      const end2300 = createNaiveLocalIsoString(year, month, dateNum, 23, 0);
 
       // Comprobar si ya existe evento mapeado para 21:10 - 22:00
       const existing2110 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
-        const targetStart = new Date(start2110);
+        const targetStart = new Date(createSpainIsoString(year, month, dateNum, 21, 10));
         return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
       });
 
@@ -114,7 +122,7 @@ export async function getUpcomingCalendarEvents(
       const existing2200 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
-        const targetStart = new Date(start2200);
+        const targetStart = new Date(createSpainIsoString(year, month, dateNum, 22, 0));
         return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
       });
 
@@ -173,6 +181,10 @@ export async function syncSlotInstance(
       startIso = createSpainIsoString(year, month - 1, day, 22, 0);
       endIso = createSpainIsoString(year, month - 1, day, 23, 0);
     }
+  } else if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
+    // Si era una cadena local sin offset, agregar el offset de España +02:00
+    startIso = `${startIso}+02:00`;
+    if (endIso) endIso = `${endIso}+02:00`;
   }
 
   // 1. Limpiar/eliminar cualquier evento existente en Google Calendar en la ventana 21:00 a 23:05 de ese día
