@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { CalendarSlot, EffortLevel } from "@/types";
-import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Sparkles, Moon, Filter, Trophy } from "lucide-react";
+import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Moon, Trophy } from "lucide-react";
 import { format, parseISO, differenceInMinutes } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -23,9 +22,6 @@ export default function CalendarViewer({
   isLoading,
   onRefresh,
 }: CalendarViewerProps) {
-  // Filtro: 'all' | 'free' | 'night'
-  const [activeFilter, setActiveFilter] = useState<"all" | "free" | "night">("free");
-
   // Determinar max bloques permitidos según nivel de esfuerzo
   const requiredSlotsMap: Record<EffortLevel, number> = {
     "1_day": 2,
@@ -35,16 +31,8 @@ export default function CalendarViewer({
   const maxSlots = requiredSlotsMap[effortLevel];
   const maxSessions = maxSlots / 2;
 
-  // Filtrar eventos según la pestaña seleccionada
-  const displayedEvents = events.filter((e) => {
-    if (activeFilter === "night") {
-      return e.isDefaultNightSlot;
-    }
-    if (activeFilter === "free") {
-      return e.isTimeBlock || e.isDefaultNightSlot;
-    }
-    return true;
-  });
+  // Filtrar eventos para mostrar únicamente bloques libres (incluyendo bloques nocturnos)
+  const displayedEvents = events.filter((e) => e.isTimeBlock || e.isDefaultNightSlot);
 
   // Agrupar eventos por día para renderizado ordenado
   const groupedEvents: Record<string, CalendarSlot[]> = {};
@@ -131,7 +119,7 @@ export default function CalendarViewer({
           <div>
             <h2 className="text-base font-black text-yellow-400 uppercase tracking-wider">Visor de Time Blocking</h2>
             <p className="text-xs text-zinc-400 font-medium">
-              Bloques de noche garantizados (21:10-23:00 en L, M, X, J y D)
+              Bloques libres disponibles (incluyendo noches de 21:10-23:00 en L, M, X, J y D)
             </p>
           </div>
         </div>
@@ -148,47 +136,8 @@ export default function CalendarViewer({
         </div>
       </div>
 
-      {/* Pestañas de Filtrado Arcade */}
-      <div className="mt-4 flex items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-950 border border-zinc-800">
-        <button
-          onClick={() => setActiveFilter("free")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
-            activeFilter === "free"
-              ? "bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.4)]"
-              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>🕹️ Libres</span>
-        </button>
-
-        <button
-          onClick={() => setActiveFilter("night")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
-            activeFilter === "night"
-              ? "bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.4)]"
-              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
-          }`}
-        >
-          <Moon className="w-3.5 h-3.5 text-yellow-400" />
-          <span>🌙 Noche</span>
-        </button>
-
-        <button
-          onClick={() => setActiveFilter("all")}
-          className={`py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-1.5 ${
-            activeFilter === "all"
-              ? "bg-zinc-800 text-yellow-300 border border-yellow-500/40"
-              : "text-zinc-400 hover:text-yellow-300 hover:bg-zinc-900"
-          }`}
-        >
-          <Filter className="w-3.5 h-3.5" />
-          <span>👾 Todos</span>
-        </button>
-      </div>
-
       {/* Banner de Estado de Selección */}
-      <div className="mt-3.5 p-3.5 rounded-2xl bg-yellow-950/20 border border-yellow-500/30 flex items-center justify-between flex-wrap gap-2 text-xs shadow-inner">
+      <div className="mt-4 p-3.5 rounded-2xl bg-yellow-950/20 border border-yellow-500/30 flex items-center justify-between flex-wrap gap-2 text-xs shadow-inner">
         <div className="flex items-center gap-2 text-yellow-300">
           <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
           <span className="font-bold uppercase tracking-wider">
@@ -205,7 +154,7 @@ export default function CalendarViewer({
         </div>
       </div>
 
-      {/* Lista de Eventos y Bloques */}
+      {/* Lista de Eventos y Bloques Libres */}
       <div className="mt-4 flex-1 overflow-y-auto pr-1 space-y-5 max-h-[520px] custom-scrollbar">
         {isLoading ? (
           <div className="py-24 text-center space-y-3">
@@ -215,11 +164,9 @@ export default function CalendarViewer({
         ) : Object.keys(groupedEvents).length === 0 ? (
           <div className="py-20 text-center space-y-3 bg-zinc-950 rounded-2xl border border-zinc-800 p-6">
             <AlertCircle className="w-8 h-8 text-zinc-600 mx-auto" />
-            <p className="text-sm font-bold text-yellow-300 uppercase tracking-wide">Sin eventos detectados</p>
+            <p className="text-sm font-bold text-yellow-300 uppercase tracking-wide">Sin bloques libres disponibles</p>
             <p className="text-xs text-zinc-500 max-w-sm mx-auto font-medium">
-              {activeFilter === "night"
-                ? "Los bloques de noche fijos (21:10 - 23:00) están disponibles en Lunes, Martes, Miércoles, Jueves y Domingo."
-                : "No hay bloques libres detectados en los próximos 14 días."}
+              Asegúrate de tener espacio libre o eventos formateados en tu Google Calendar en los próximos 14 días.
             </p>
           </div>
         ) : (
@@ -251,9 +198,7 @@ export default function CalendarViewer({
                             ? "bg-yellow-400/20 border-yellow-400 text-white shadow-[0_0_25px_rgba(250,204,21,0.35)] ring-1 ring-yellow-400"
                             : slot.isDefaultNightSlot
                             ? "bg-yellow-950/20 hover:bg-yellow-900/30 border-yellow-600/40 text-yellow-200"
-                            : slot.isTimeBlock
-                            ? "bg-zinc-950 hover:bg-zinc-900 border-zinc-800 hover:border-yellow-500/40 text-zinc-200"
-                            : "bg-zinc-950/40 border-zinc-900 text-zinc-600 opacity-60 cursor-not-allowed"
+                            : "bg-zinc-950 hover:bg-zinc-900 border-zinc-800 hover:border-yellow-500/40 text-zinc-200"
                         }`}
                       >
                         <div className="space-y-1">
@@ -271,19 +216,17 @@ export default function CalendarViewer({
                           </p>
                         </div>
 
-                        {(slot.isTimeBlock || slot.isDefaultNightSlot) && (
-                          <div className="pl-3">
-                            {isSelected ? (
-                              <div className="w-7 h-7 rounded-full bg-yellow-400 text-black flex items-center justify-center shadow-[0_0_15px_rgba(250,204,21,0.8)]">
-                                <CheckCircle2 className="w-4.5 h-4.5 stroke-[3]" />
-                              </div>
-                            ) : (
-                              <div className="w-7 h-7 rounded-full border border-zinc-800 group-hover:border-yellow-400 flex items-center justify-center text-xs text-zinc-500 group-hover:text-yellow-400 transition-colors font-black">
-                                +
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <div className="pl-3">
+                          {isSelected ? (
+                            <div className="w-7 h-7 rounded-full bg-yellow-400 text-black flex items-center justify-center shadow-[0_0_15px_rgba(250,204,21,0.8)]">
+                              <CheckCircle2 className="w-4.5 h-4.5 stroke-[3]" />
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded-full border border-zinc-800 group-hover:border-yellow-400 flex items-center justify-center text-xs text-zinc-500 group-hover:text-yellow-400 transition-colors font-black">
+                              +
+                            </div>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -296,5 +239,6 @@ export default function CalendarViewer({
     </div>
   );
 }
+
 
 
