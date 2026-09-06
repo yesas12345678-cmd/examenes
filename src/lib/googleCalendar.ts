@@ -8,8 +8,36 @@ export function getGoogleCalendarClient(accessToken: string) {
 }
 
 /**
+ * Genera un ISO String manteniendo la hora local exacta y la zona horaria (offset)
+ * sin desplazar las horas a UTC.
+ */
+function createLocalIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
+  const date = new Date(year, month, day, hours, minutes, 0, 0);
+  const tzo = -date.getTimezoneOffset();
+  const dif = tzo >= 0 ? "+" : "-";
+  const pad = (num: number) => String(Math.floor(Math.abs(num))).padStart(2, "0");
+
+  return (
+    date.getFullYear() +
+    "-" +
+    pad(date.getMonth() + 1) +
+    "-" +
+    pad(date.getDate()) +
+    "T" +
+    pad(date.getHours()) +
+    ":" +
+    pad(date.getMinutes()) +
+    ":00" +
+    dif +
+    pad(tzo / 60) +
+    ":" +
+    pad(tzo % 60)
+  );
+}
+
+/**
  * Obtiene los eventos de los próximos X días de Google Calendar
- * e inyecta los bloques de noche predeterminados (21:00-22:00 y 22:00-23:00)
+ * e inyecta siempre disponibles las sesiones de 21:10 - 22:00 y 22:00 - 23:00
  * para Lunes, Martes, Miércoles, Jueves y Domingo.
  */
 export async function getUpcomingCalendarEvents(
@@ -71,51 +99,52 @@ export async function getUpcomingCalendarEvents(
       const year = dayDate.getFullYear();
       const month = dayDate.getMonth();
       const dateNum = dayDate.getDate();
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
 
-      const start21 = new Date(year, month, dateNum, 21, 0, 0, 0);
-      const end21 = new Date(year, month, dateNum, 22, 0, 0, 0);
+      const start2110 = createLocalIsoString(year, month, dateNum, 21, 10);
+      const end2200 = createLocalIsoString(year, month, dateNum, 22, 0);
 
-      const start22 = new Date(year, month, dateNum, 22, 0, 0, 0);
-      const end22 = new Date(year, month, dateNum, 23, 0, 0, 0);
+      const start2200 = createLocalIsoString(year, month, dateNum, 22, 0);
+      const end2300 = createLocalIsoString(year, month, dateNum, 23, 0);
 
-      // Comprobar si ya existe evento real en el bloque 21:00-22:00
-      const existing21 = mappedEvents.find((e) => {
+      // Comprobar si ya existe evento mapeado para 21:10 - 22:00
+      const existing2110 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
-        return Math.abs(eStart.getTime() - start21.getTime()) < 15 * 60 * 1000;
+        const targetStart = new Date(start2110);
+        return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
       });
 
-      if (existing21) {
-        existing21.isDefaultNightSlot = true;
+      if (existing2110) {
+        existing2110.isDefaultNightSlot = true;
       } else {
-        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
         virtualSlots.push({
-          id: `virtual_21_${dateStr}`,
-          summary: "Bloque Libre Noche (21:00 - 22:00)",
-          start: start21.toISOString(),
-          end: end21.toISOString(),
+          id: `virtual_2110_${dateStr}`,
+          summary: "Bloque Noche (21:10 - 22:00)",
+          start: start2110,
+          end: end2200,
           isTimeBlock: true,
           isVirtual: true,
           isDefaultNightSlot: true,
         });
       }
 
-      // Comprobar si ya existe evento real en el bloque 22:00-23:00
-      const existing22 = mappedEvents.find((e) => {
+      // Comprobar si ya existe evento mapeado para 22:00 - 23:00
+      const existing2200 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
-        return Math.abs(eStart.getTime() - end21.getTime()) < 15 * 60 * 1000;
+        const targetStart = new Date(start2200);
+        return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
       });
 
-      if (existing22) {
-        existing22.isDefaultNightSlot = true;
+      if (existing2200) {
+        existing2200.isDefaultNightSlot = true;
       } else {
-        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
         virtualSlots.push({
-          id: `virtual_22_${dateStr}`,
-          summary: "Bloque Libre Noche (22:00 - 23:00)",
-          start: start22.toISOString(),
-          end: end22.toISOString(),
+          id: `virtual_2200_${dateStr}`,
+          summary: "Bloque Noche (22:00 - 23:00)",
+          start: start2200,
+          end: end2300,
           isTimeBlock: true,
           isVirtual: true,
           isDefaultNightSlot: true,
@@ -132,9 +161,9 @@ export async function getUpcomingCalendarEvents(
 }
 
 /**
- * Procesa la sincronización de un bloque (existente o virtual).
- * Si es un bloque de noche o tiene eventos conflictivos en esa ventana de 21:00-23:00,
- * elimina primero cualquier evento que exista en esas 2 horas y crea/actualiza el evento de estudio.
+ * Procesa la sincronización de un bloque.
+ * Elimina automáticamente eventos conflictivos existentes en la ventana 21:00 - 23:05 de ese día
+ * (como pc, lecture, descanso, acotame) y crea el bloque de estudio.
  */
 export async function syncSlotInstance(
   accessToken: string,
@@ -145,44 +174,61 @@ export async function syncSlotInstance(
   const calendar = getGoogleCalendarClient(accessToken);
   const newSummary = `Estudio: ${examName}`;
 
-  // Buscar metadatos del slot si fue enviado o es virtual
   const targetSlot = allSlots.find((s) => s.id === slotId);
 
-  // Si es un slot virtual o un ID con formato virtual_XX_YYYY-MM-DD
-  if (slotId.startsWith("virtual_") || targetSlot?.isVirtual) {
-    let startIso = targetSlot?.start;
-    let endIso = targetSlot?.end;
+  let startIso = targetSlot?.start;
+  let endIso = targetSlot?.end;
 
-    if (!startIso || !endIso) {
-      // Reconstruir start/end del ID (ej: virtual_21_2026-09-07)
-      const parts = slotId.split("_");
-      const hour = parseInt(parts[1], 10);
-      const dateStr = parts[2];
-      const [year, month, day] = dateStr.split("-").map(Number);
+  if (slotId.startsWith("virtual_")) {
+    const parts = slotId.split("_");
+    const code = parts[1]; // "2110" or "2200"
+    const dateStr = parts[2];
+    const [year, month, day] = dateStr.split("-").map(Number);
 
-      const startDate = new Date(year, month - 1, day, hour, 0, 0, 0);
-      const endDate = new Date(year, month - 1, day, hour + 1, 0, 0, 0);
-      startIso = startDate.toISOString();
-      endIso = endDate.toISOString();
+    if (code === "2110") {
+      startIso = createLocalIsoString(year, month - 1, day, 21, 10);
+      endIso = createLocalIsoString(year, month - 1, day, 22, 0);
+    } else {
+      startIso = createLocalIsoString(year, month - 1, day, 22, 0);
+      endIso = createLocalIsoString(year, month - 1, day, 23, 0);
     }
+  }
 
-    // 1. Limpiar/eliminar cualquier evento existente en Google Calendar en esa ventana horaria
+  // 1. Limpiar/eliminar cualquier evento existente en Google Calendar en la ventana 21:00 a 23:05 de ese día
+  if (startIso && endIso) {
     try {
+      const slotStartDate = new Date(startIso);
+      const windowStart = createLocalIsoString(
+        slotStartDate.getFullYear(),
+        slotStartDate.getMonth(),
+        slotStartDate.getDate(),
+        21,
+        0
+      );
+      const windowEnd = createLocalIsoString(
+        slotStartDate.getFullYear(),
+        slotStartDate.getMonth(),
+        slotStartDate.getDate(),
+        23,
+        5
+      );
+
       const existingInWindow = await calendar.events.list({
         calendarId: "primary",
-        timeMin: startIso,
-        timeMax: endIso,
+        timeMin: windowStart,
+        timeMax: windowEnd,
         singleEvents: true,
       });
 
       const eventsToDelete = existingInWindow.data.items || [];
       for (const ev of eventsToDelete) {
-        if (ev.id) {
+        if (ev.id && !ev.summary?.startsWith("Estudio:")) {
           try {
             await calendar.events.delete({
               calendarId: "primary",
               eventId: ev.id,
             });
+            console.log(`Evento conflictivo eliminado (${ev.summary || "Sin título"} - ID: ${ev.id})`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
@@ -191,8 +237,10 @@ export async function syncSlotInstance(
     } catch (cleanErr) {
       console.warn("Fallo en la limpieza previa de eventos conflictivos:", cleanErr);
     }
+  }
 
-    // 2. Crear el nuevo evento en Google Calendar
+  // 2. Crear o actualizar el evento en Google Calendar
+  if (startIso && endIso) {
     const response = await calendar.events.insert({
       calendarId: "primary",
       requestBody: {
@@ -201,25 +249,17 @@ export async function syncSlotInstance(
         end: { dateTime: endIso },
       },
     });
-
     return response.data;
   }
 
-  // Si es un bloque de evento existente en Google Calendar (no virtual)
-  try {
-    const response = await calendar.events.patch({
-      calendarId: "primary",
-      eventId: slotId,
-      requestBody: {
-        summary: newSummary,
-      },
-    });
+  // Fallback si fuera un ID de evento regular
+  const response = await calendar.events.patch({
+    calendarId: "primary",
+    eventId: slotId,
+    requestBody: {
+      summary: newSummary,
+    },
+  });
 
-    return response.data;
-  } catch (error: any) {
-    console.error(`Error actualizando instancia de Google Calendar (${slotId}):`, error);
-    throw new Error(
-      error.message || `No se pudo actualizar el bloque de calendario ID ${slotId}`
-    );
-  }
+  return response.data;
 }

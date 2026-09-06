@@ -131,7 +131,7 @@ export default function CalendarViewer({
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Visor de Time Blocking</h2>
             <p className="text-xs text-slate-400">
-              Google Calendar (con bloques de noche de 21:00 a 23:00 en Lun, Mar, Mié, Jue y Dom)
+              Google Calendar (con bloques de noche de 21:10-22:00 y 22:00-23:00 en Lun, Mar, Mié, Jue y Dom)
             </p>
           </div>
         </div>
