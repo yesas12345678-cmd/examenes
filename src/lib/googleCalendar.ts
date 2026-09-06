@@ -132,7 +132,7 @@ export async function getUpcomingCalendarEvents(
       if (existing2200) {
         existing2200.isDefaultNightSlot = true;
         existing2200.start = start2200;
-        existing2200.end = end2300; // Forzar hora final a 23:00 (evita que marque 22:15)
+        existing2200.end = end2300; // Forzar hora final a 23:00
         existing2200.isTimeBlock = true;
       } else {
         virtualSlots.push({
@@ -157,8 +157,9 @@ export async function getUpcomingCalendarEvents(
 
 /**
  * Procesa la sincronización de un bloque.
- * Elimina automáticamente eventos conflictivos existentes en la ventana 21:00 - 23:05 de ese día
- * (como pc, lecture, descanso, acotame) y crea el bloque de estudio completo.
+ * - Cambia el color a Azul (colorId: "9")
+ * - Configura el recordatorio exactamente al inicio del evento (0 minutos antes)
+ * - Elimina eventos conflictivos previos en la franja de noche de ese día
  */
 export async function syncSlotInstance(
   accessToken: string,
@@ -188,7 +189,6 @@ export async function syncSlotInstance(
       endIso = createSpainIsoString(year, month - 1, day, 23, 0);
     }
   } else if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
-    // Si era una cadena local sin offset, deducir si es 21:10 o 22:00
     if (startIso.includes("T21:10")) {
       const parts = startIso.split("T")[0].split("-").map(Number);
       startIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 21, 10);
@@ -248,15 +248,26 @@ export async function syncSlotInstance(
     }
   }
 
-  // 2. Crear o actualizar el evento en Google Calendar con la hora exacta
+  // Configuración del recordatorio único al inicio del evento (0 min) y color Azul (colorId: "9")
+  const eventRequestBody: any = {
+    summary: newSummary,
+    colorId: "9", // Color Azul (Blueberry) en Google Calendar
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 0 }, // Recordatorio al inicio del evento (0 minutos)
+      ],
+    },
+  };
+
+  // 2. Crear o actualizar el evento en Google Calendar
   if (startIso && endIso) {
+    eventRequestBody.start = { dateTime: startIso };
+    eventRequestBody.end = { dateTime: endIso };
+
     const response = await calendar.events.insert({
       calendarId: "primary",
-      requestBody: {
-        summary: newSummary,
-        start: { dateTime: startIso },
-        end: { dateTime: endIso },
-      },
+      requestBody: eventRequestBody,
     });
     return response.data;
   }
@@ -264,9 +275,7 @@ export async function syncSlotInstance(
   const response = await calendar.events.patch({
     calendarId: "primary",
     eventId: slotId,
-    requestBody: {
-      summary: newSummary,
-    },
+    requestBody: eventRequestBody,
   });
 
   return response.data;
