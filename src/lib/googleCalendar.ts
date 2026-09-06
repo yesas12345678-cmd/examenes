@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { CalendarSlot } from "@/types";
+import { CalendarSlot, ExamData } from "@/types";
 
 export function getGoogleCalendarClient(accessToken: string) {
   const oauth2Client = new google.auth.OAuth2();
@@ -9,7 +9,6 @@ export function getGoogleCalendarClient(accessToken: string) {
 
 /**
  * Formatea una fecha local como string ISO sin offset (ej: 2026-09-07T21:10:00)
- * para garantizar que el navegador interprete exactamente las 21:10 y 22:00 localmente.
  */
 function createNaiveLocalIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
   const pad = (num: number) => String(num).padStart(2, "0");
@@ -25,8 +24,78 @@ function createSpainIsoString(year: number, month: number, day: number, hours: n
 }
 
 /**
+ * Busca si existe el calendario secundario 'examenes' (o 'exámenes').
+ * Si no existe, lo crea automáticamente en la cuenta de Google del usuario.
+ */
+export async function getOrCreateExamenesCalendarId(accessToken: string): Promise<string> {
+  const calendar = getGoogleCalendarClient(accessToken);
+
+  try {
+    const listResponse = await calendar.calendarList.list();
+    const calendars = listResponse.data.items || [];
+
+    const examenesCal = calendars.find(
+      (c) =>
+        c.summary &&
+        (c.summary.toLowerCase().trim() === "examenes" || c.summary.toLowerCase().trim() === "exámenes")
+    );
+
+    if (examenesCal && examenesCal.id) {
+      return examenesCal.id;
+    }
+
+    // Si no existe el calendario secundario, lo creamos
+    const newCalResponse = await calendar.calendars.insert({
+      requestBody: {
+        summary: "examenes",
+        timeZone: "Europe/Madrid",
+      },
+    });
+
+    return newCalResponse.data.id || "primary";
+  } catch (error) {
+    console.warn("Fallo buscando o creando calendario 'examenes', se usará el primario:", error);
+    return "primary";
+  }
+}
+
+/**
+ * Crea el evento de Todo el Día (All-day) para el Examen en el calendario 'examenes'.
+ */
+export async function createAllDayExamEvent(accessToken: string, exam: ExamData) {
+  const calendar = getGoogleCalendarClient(accessToken);
+  const calendarId = await getOrCreateExamenesCalendarId(accessToken);
+
+  try {
+    const response = await calendar.events.insert({
+      calendarId: calendarId,
+      requestBody: {
+        summary: `Examen: ${exam.name}`,
+        start: {
+          date: exam.date, // YYYY-MM-DD formato de Todo el Día
+        },
+        end: {
+          date: exam.date,
+        },
+        colorId: "11", // Color Rojo (Tomato) para destacar el día del examen
+        reminders: {
+          useDefault: false,
+          overrides: [
+            { method: "popup", minutes: 540 }, // Recordatorio a las 9:00 AM del día del examen
+          ],
+        },
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error("Error creando el evento All-Day de examen:", error);
+    throw new Error(error.message || "No se pudo crear el evento de todo el día para el examen.");
+  }
+}
+
+/**
  * Obtiene los eventos de los próximos X días de Google Calendar
- * e inyecta y fuerza SIEMPRE las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
+ * e inyecta las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
  * para Lunes, Martes, Miércoles, Jueves y Domingo.
  */
 export async function getUpcomingCalendarEvents(
@@ -45,13 +114,12 @@ export async function getUpcomingCalendarEvents(
     calendarId: "primary",
     timeMin,
     timeMax,
-    singleEvents: true, // Expande las series recurrentes en instancias individuales
+    singleEvents: true,
     orderBy: "startTime",
   });
 
   const items = response.data.items || [];
 
-  // Mapear eventos reales devueltos por Google
   const mappedEvents: CalendarSlot[] = items.map((item) => {
     const summary = item.summary ? item.summary.trim() : "";
     const lowerSummary = summary.toLowerCase();
@@ -76,7 +144,6 @@ export async function getUpcomingCalendarEvents(
     };
   });
 
-  // Días permitidos: Domingo (0), Lunes (1), Martes (2), Miércoles (3), Jueves (4)
   const allowedDays = [0, 1, 2, 3, 4];
   const virtualSlots: CalendarSlot[] = [];
 
@@ -96,7 +163,6 @@ export async function getUpcomingCalendarEvents(
       const start2200 = createNaiveLocalIsoString(year, month, dateNum, 22, 0);
       const end2300 = createNaiveLocalIsoString(year, month, dateNum, 23, 0);
 
-      // Comprobar si existe evento para 21:10 - 22:00
       const existing2110 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
@@ -107,7 +173,7 @@ export async function getUpcomingCalendarEvents(
       if (existing2110) {
         existing2110.isDefaultNightSlot = true;
         existing2110.start = start2110;
-        existing2110.end = end2200; // Forzar hora final a 22:00
+        existing2110.end = end2200;
         existing2110.isTimeBlock = true;
       } else {
         virtualSlots.push({
@@ -121,7 +187,6 @@ export async function getUpcomingCalendarEvents(
         });
       }
 
-      // Comprobar si existe evento para 22:00 - 23:00
       const existing2200 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
@@ -132,7 +197,7 @@ export async function getUpcomingCalendarEvents(
       if (existing2200) {
         existing2200.isDefaultNightSlot = true;
         existing2200.start = start2200;
-        existing2200.end = end2300; // Forzar hora final a 23:00
+        existing2200.end = end2300;
         existing2200.isTimeBlock = true;
       } else {
         virtualSlots.push({
@@ -148,7 +213,6 @@ export async function getUpcomingCalendarEvents(
     }
   }
 
-  // Combinar eventos reales y virtuales ordenados por hora de inicio
   const allEvents = [...mappedEvents, ...virtualSlots];
   allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
@@ -156,7 +220,7 @@ export async function getUpcomingCalendarEvents(
 }
 
 /**
- * Procesa la sincronización de un bloque.
+ * Procesa la sincronización de un bloque de estudio.
  * - Cambia el color a Azul (colorId: "9")
  * - Configura el recordatorio exactamente al inicio del evento (0 minutos antes)
  * - Elimina eventos conflictivos previos en la franja de noche de ese día
@@ -177,7 +241,7 @@ export async function syncSlotInstance(
 
   if (slotId.startsWith("virtual_")) {
     const parts = slotId.split("_");
-    const code = parts[1]; // "2110" or "2200"
+    const code = parts[1];
     const dateStr = parts[2];
     const [year, month, day] = dateStr.split("-").map(Number);
 
@@ -203,7 +267,7 @@ export async function syncSlotInstance(
     }
   }
 
-  // 1. Limpiar/eliminar cualquier evento existente en Google Calendar en la ventana 21:00 a 23:05 de ese día
+  // 1. Limpiar/eliminar cualquier evento existente en la ventana 21:00 a 23:05 de ese día
   if (startIso && endIso) {
     try {
       const slotStartDate = new Date(startIso);
@@ -237,7 +301,6 @@ export async function syncSlotInstance(
               calendarId: "primary",
               eventId: ev.id,
             });
-            console.log(`Evento conflictivo eliminado (${ev.summary || "Sin título"} - ID: ${ev.id})`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
@@ -248,7 +311,6 @@ export async function syncSlotInstance(
     }
   }
 
-  // Configuración del recordatorio único al inicio del evento (0 min) y color Azul (colorId: "9")
   const eventRequestBody: any = {
     summary: newSummary,
     colorId: "9", // Color Azul (Blueberry) en Google Calendar

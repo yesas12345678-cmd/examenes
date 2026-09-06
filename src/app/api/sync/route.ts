@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { syncSlotInstance } from "@/lib/googleCalendar";
+import { syncSlotInstance, createAllDayExamEvent } from "@/lib/googleCalendar";
 import { SyncPayload } from "@/types";
 
 export async function POST(request: Request) {
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Procesar la creación/actualización de bloques en Google Calendar
+    // 1. Procesar la creación/actualización de bloques de estudio en Google Calendar (Azul + Recordatorio 0m)
     const updatedCalendarEvents = [];
     const calendarErrors = [];
 
@@ -69,6 +69,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // 2. Crear evento de Todo el Día (All-Day) para el examen en el calendario 'examenes'
+    let allDayExamResult = null;
+    let allDayExamError = null;
+
+    try {
+      allDayExamResult = await createAllDayExamEvent(session.accessToken, exam);
+    } catch (err: any) {
+      console.error("Error al crear el evento de todo el día para el examen:", err);
+      allDayExamError = err.message || "Error al registrar el examen en el calendario 'examenes'";
+    }
+
     if (calendarErrors.length > 0) {
       return NextResponse.json(
         {
@@ -79,11 +90,19 @@ export async function POST(request: Request) {
       );
     }
 
+    let message = `¡Genial! Se reservaron ${updatedCalendarEvents.length} bloques de estudio en azul`;
+    if (allDayExamResult) {
+      message += ` y se creó el examen "Examen: ${exam.name}" de todo el día en tu calendario "examenes".`;
+    } else if (allDayExamError) {
+      message += `, pero hubo una advertencia al crear el evento de todo el día: ${allDayExamError}`;
+    }
+
     return NextResponse.json({
       success: true,
-      message: `¡Genial! Se han reservado ${updatedCalendarEvents.length} bloques de estudio en tu Google Calendar como "Estudio: ${exam.name}".`,
+      message,
       data: {
         updatedBlocksCount: updatedCalendarEvents.length,
+        allDayExamResult,
       },
     });
 
