@@ -44,7 +44,6 @@ export async function getOrCreateExamenesCalendarId(accessToken: string): Promis
       return examenesCal.id;
     }
 
-    // Si no existe el calendario secundario, lo creamos
     const newCalResponse = await calendar.calendars.insert({
       requestBody: {
         summary: "examenes",
@@ -72,16 +71,16 @@ export async function createAllDayExamEvent(accessToken: string, exam: ExamData)
       requestBody: {
         summary: `Examen: ${exam.name}`,
         start: {
-          date: exam.date, // YYYY-MM-DD formato de Todo el Día
+          date: exam.date,
         },
         end: {
           date: exam.date,
         },
-        colorId: "11", // Color Rojo (Tomato) para destacar el día del examen
+        colorId: "11", // Color Rojo (Tomato)
         reminders: {
           useDefault: false,
           overrides: [
-            { method: "popup", minutes: 540 }, // Recordatorio a las 9:00 AM del día del examen
+            { method: "popup", minutes: 540 },
           ],
         },
       },
@@ -221,9 +220,9 @@ export async function getUpcomingCalendarEvents(
 
 /**
  * Procesa la sincronización de un bloque de estudio.
- * - Cambia el color a Azul (colorId: "9")
- * - Configura el recordatorio exactamente al inicio del evento (0 minutos antes)
- * - Elimina eventos conflictivos previos en la franja de noche de ese día
+ * - Elimina únicamente eventos estrictamente DENTRO de las 21:10 a 23:00 de ese día.
+ * - Preserva intactos 'aseo y cena' (que termina a las 21:10) y 'acotame' (que empieza a las 23:00).
+ * - Aplica el color Azul (colorId: "9") y recordatorio en el minuto 0.
  */
 export async function syncSlotInstance(
   accessToken: string,
@@ -267,7 +266,7 @@ export async function syncSlotInstance(
     }
   }
 
-  // 1. Limpiar/eliminar cualquier evento existente en la ventana 21:00 a 23:05 de ese día
+  // 1. Limpieza estricta: Eliminar ÚNICAMENTE eventos que empiecen a las 21:10 o después Y terminen a las 23:00 o antes
   if (startIso && endIso) {
     try {
       const slotStartDate = new Date(startIso);
@@ -276,14 +275,14 @@ export async function syncSlotInstance(
         slotStartDate.getMonth(),
         slotStartDate.getDate(),
         21,
-        0
+        10
       );
       const windowEnd = createSpainIsoString(
         slotStartDate.getFullYear(),
         slotStartDate.getMonth(),
         slotStartDate.getDate(),
         23,
-        5
+        0
       );
 
       const existingInWindow = await calendar.events.list({
@@ -294,13 +293,32 @@ export async function syncSlotInstance(
       });
 
       const eventsToDelete = existingInWindow.data.items || [];
+      const targetWindowStart = new Date(windowStart);
+      const targetWindowEnd = new Date(windowEnd);
+
       for (const ev of eventsToDelete) {
-        if (ev.id && !ev.summary?.startsWith("Estudio:")) {
+        if (!ev.id || ev.summary?.startsWith("Estudio:")) continue;
+
+        const evStartIso = ev.start?.dateTime || ev.start?.date;
+        const evEndIso = ev.end?.dateTime || ev.end?.date;
+        if (!evStartIso || !evEndIso) continue;
+
+        const evStart = new Date(evStartIso);
+        const evEnd = new Date(evEndIso);
+
+        // Verificación estricta de límites:
+        // - 'aseo y cena' termina a las 21:10 -> NO se elimina (evStart < 21:10)
+        // - 'acotame' empieza a las 23:00 -> NO se elimina (evEnd > 23:00)
+        const startsInside = evStart.getTime() >= targetWindowStart.getTime() - 2 * 60 * 1000;
+        const endsInside = evEnd.getTime() <= targetWindowEnd.getTime() + 2 * 60 * 1000;
+
+        if (startsInside && endsInside) {
           try {
             await calendar.events.delete({
               calendarId: "primary",
               eventId: ev.id,
             });
+            console.log(`Evento reemplazado: ${ev.summary}`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
