@@ -120,25 +120,37 @@ export async function getUpcomingCalendarEvents(
 
   const items = response.data.items || [];
 
-  const mappedEvents: CalendarSlot[] = items.map((item) => {
+  const mappedEvents: CalendarSlot[] = [];
+
+  for (const item of items) {
     const summary = item.summary ? item.summary.trim() : "";
     const lowerSummary = summary.toLowerCase();
 
-    // Regex para detectar títulos tipo "09:00 - 10:00", "09:00-10:00", "16:00 - 17:00", "16:00a17:00", etc.
+    // Regex para detectar títulos de rango horario como "09:00 - 10:00", "09:00-10:00", "16:00 - 17:00", etc.
     const isTimePattern = /^\d{1,2}:\d{2}\s*(?:-|a)\s*\d{1,2}:\d{2}$/i.test(summary);
 
-    const isTimeBlock =
+    // Un evento es un bloque libre de Google Calendar SOLO si:
+    // 1. Su título es exactamente un rango horario (ej: "09:00 - 10:00")
+    // 2. O su título es explícitamente "libre", "disponible", "timeblock", "" o "(sin título)"
+    // 3. O su color en Google Calendar es verde (colorId "10" o "2")
+    const isExplicitFreeKeyword =
       summary === "" ||
-      isTimePattern ||
-      lowerSummary.includes("timeblock") ||
-      lowerSummary.includes("time block") ||
-      lowerSummary.includes("libre") ||
-      lowerSummary.includes("disponible") ||
-      lowerSummary.includes("bloque") ||
-      lowerSummary.includes("slot") ||
-      lowerSummary.includes("estudio") ||
+      lowerSummary === "timeblock" ||
+      lowerSummary === "time block" ||
+      lowerSummary === "libre" ||
+      lowerSummary === "disponible" ||
+      lowerSummary === "bloque libre" ||
       lowerSummary === "(sin título)" ||
       lowerSummary === "no title";
+
+    const isGreenColor = item.colorId === "10" || item.colorId === "2";
+
+    const isTimeBlock = isTimePattern || isExplicitFreeKeyword || isGreenColor;
+
+    if (!isTimeBlock) {
+      // Excluir estrictamente eventos ocupados (pc, lecture, come, gym, abuelos, gf, Instituto, etc.)
+      continue;
+    }
 
     let startStr = item.start?.dateTime || item.start?.date || "";
     let endStr = item.end?.dateTime || item.end?.date || "";
@@ -165,21 +177,20 @@ export async function getUpcomingCalendarEvents(
       );
     }
 
-    return {
+    mappedEvents.push({
       id: item.id || "",
       summary: summary || "Bloque Libre",
       start: startStr,
       end: endStr,
       recurringEventId: item.recurringEventId || undefined,
-      isTimeBlock,
+      isTimeBlock: true,
       isVirtual: false,
-    };
-  });
+    });
+  }
 
-  const virtualSlots: CalendarSlot[] = [];
-
-  // Inyectar ÚNICAMENTE los Bloques Nocturnos Fijos solicitados (21:10 - 22:00 y 22:00 - 23:00 en L, M, X, J y D)
+  // Inyectar ÚNICAMENTE las 2 sesiones nocturnas fijas solicitadas (21:10 - 22:00 y 22:00 - 23:00 en Dom, Lun, Mar, Mié, Jue)
   const allowedNightDays = [0, 1, 2, 3, 4]; // Dom, Lun, Mar, Mié, Jue
+  const virtualSlots: CalendarSlot[] = [];
 
   for (let d = 0; d < daysAhead; d++) {
     const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
@@ -206,9 +217,7 @@ export async function getUpcomingCalendarEvents(
 
       if (existing2110) {
         existing2110.isDefaultNightSlot = true;
-        existing2110.start = start2110;
-        existing2110.end = end2200;
-        existing2110.isTimeBlock = true;
+        existing2110.summary = "Bloque Noche (21:10 - 22:00)";
       } else {
         virtualSlots.push({
           id: `virtual_2110_${dateStr}`,
@@ -230,9 +239,7 @@ export async function getUpcomingCalendarEvents(
 
       if (existing2200) {
         existing2200.isDefaultNightSlot = true;
-        existing2200.start = start2200;
-        existing2200.end = end2300;
-        existing2200.isTimeBlock = true;
+        existing2200.summary = "Bloque Noche (22:00 - 23:00)";
       } else {
         virtualSlots.push({
           id: `virtual_2200_${dateStr}`,
