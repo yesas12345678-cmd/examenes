@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { patchCalendarEventInstance } from "@/lib/googleCalendar";
-import { createExamNotionPage } from "@/lib/notion";
 import { SyncPayload } from "@/types";
 
 export async function POST(request: Request) {
@@ -10,7 +9,7 @@ export async function POST(request: Request) {
 
     if (!session || !session.accessToken) {
       return NextResponse.json(
-        { success: false, error: "Sesión no válida o token de Google faltante. Re-inicia sesión." },
+        { success: false, error: "Sesión no válida o token de Google faltante. Re-inicia sesión con Google." },
         { status: 401 }
       );
     }
@@ -33,7 +32,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Comprobar requerimiento de slots según esfuerzo
+    // Comprobar requerimiento de slots según nivel de esfuerzo
     const requiredSlotsMap = {
       '1_day': 2,
       '2_days': 4,
@@ -51,7 +50,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // A. Actualizar Instancias específicas en Google Calendar
+    // Actualizar Instancias específicas en Google Calendar (This event / instance only)
     const updatedCalendarEvents = [];
     const calendarErrors = [];
 
@@ -69,58 +68,21 @@ export async function POST(request: Request) {
       }
     }
 
-    // B. Crear entrada en Notion
-    let notionPageResult = null;
-    let notionError = null;
-
-    try {
-      notionPageResult = await createExamNotionPage(exam);
-    } catch (err: any) {
-      console.error("Fallo al crear página en Notion:", err);
-      notionError = err.message || "Error al sincronizar con Notion";
-    }
-
-    // Consolidación de respuesta
-    if (calendarErrors.length > 0 && notionError) {
+    if (calendarErrors.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          error: `Falló la actualización tanto en Google Calendar como en Notion. Detalle Calendar: ${calendarErrors.join(", ")}. Detalle Notion: ${notionError}`,
+          error: `Ocurrió un fallo al actualizar en Google Calendar: ${calendarErrors.join(", ")}`,
         },
         { status: 500 }
       );
     }
 
-    if (calendarErrors.length > 0) {
-      return NextResponse.json(
-        {
-          success: true,
-          partialError: true,
-          message: `Notion creado con éxito, pero ${calendarErrors.length} de los bloques de Google Calendar fallaron.`,
-          data: { updatedCalendarEvents, notionPageResult, calendarErrors },
-        },
-        { status: 207 }
-      );
-    }
-
-    if (notionError) {
-      return NextResponse.json(
-        {
-          success: true,
-          partialError: true,
-          message: `Google Calendar actualizado con éxito (${updatedCalendarEvents.length} bloques), pero ocurrió un error en Notion: ${notionError}`,
-          data: { updatedCalendarEvents, notionPageResult: null, notionError },
-        },
-        { status: 207 }
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      message: "¡Examen y tiempo de estudio sincronizados correctamente en Google Calendar y Notion!",
+      message: `¡Genial! Se han renombrado ${updatedCalendarEvents.length} bloques de estudio en tu Google Calendar como "Estudio: ${exam.name}".`,
       data: {
         updatedBlocksCount: updatedCalendarEvents.length,
-        notionPageId: notionPageResult?.id,
       },
     });
 

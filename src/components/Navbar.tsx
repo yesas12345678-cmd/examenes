@@ -16,7 +16,7 @@ export default function Navbar() {
           </div>
           <div>
             <h1 className="font-bold text-lg text-slate-100 leading-none">StudySync</h1>
-            <p className="text-xs text-slate-400 mt-1">Google Calendar & Notion Sync</p>
+            <p className="text-xs text-slate-400 mt-1">Google Calendar Time Blocking</p>
           </div>
         </div>
 

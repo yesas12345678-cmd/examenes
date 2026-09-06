@@ -115,31 +115,24 @@ export default function Dashboard() {
       const json = await res.json();
 
       if (res.ok && json.success) {
-        if (json.partialError) {
-          setSyncStatus({
-            type: "warning",
-            message: json.message,
-          });
-        } else {
-          setSyncStatus({
-            type: "success",
-            message: json.message || "¡Sincronización completada con éxito!",
-          });
-          setSelectedSlotIds([]);
-        }
+        setSyncStatus({
+          type: "success",
+          message: json.message || "¡Bloques de estudio actualizados con éxito en Google Calendar!",
+        });
+        setSelectedSlotIds([]);
         window.scrollTo({ top: 0, behavior: "smooth" });
         fetchEvents();
       } else {
         setSyncStatus({
           type: "error",
-          message: json.error || json.message || "Ocurrió un error al sincronizar con las APIs.",
+          message: json.error || json.message || "Ocurrió un error al actualizar los bloques de Google Calendar.",
         });
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err: any) {
       setSyncStatus({
         type: "error",
-        message: "Fallo de conexión en el servidor al procesar la sincronización.",
+        message: "Fallo de conexión en el servidor al procesar la actualización.",
       });
     } finally {
       setIsSyncing(false);
@@ -155,7 +148,7 @@ export default function Dashboard() {
         <div className="space-y-2">
           <h2 className="text-2xl font-bold text-slate-100">Bienvenido a StudySync</h2>
           <p className="text-sm text-slate-400">
-            Conecta tu cuenta de Google para sincronizar tus bloques de tiempo de estudio con Google Calendar e integrar tus exámenes en Notion.
+            Conecta tu cuenta de Google para reservar tus sesiones de estudio directamente en tus bloques libres de Google Calendar.
           </p>
         </div>
         <button
@@ -185,7 +178,9 @@ export default function Dashboard() {
           {syncStatus.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />}
           {syncStatus.type === "warning" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />}
           {syncStatus.type === "error" && <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />}
-          <div className="text-sm leading-relaxed flex-1">{syncStatus.message}</div>
+          <div className="text-sm leading-relaxed flex-1">
+            {syncStatus.message}
+          </div>
         </div>
       )}
 
@@ -225,7 +220,7 @@ export default function Dashboard() {
             {isSyncing ? (
               <>
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Sincronizando con Calendar y Notion...</span>
+                <span>Sincronizando con Google Calendar...</span>
               </>
             ) : (
               <>
