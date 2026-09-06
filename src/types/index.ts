@@ -1,13 +1,8 @@
-export type Priority = 'High' | 'Medium' | 'Low';
-export type ExamType = 'Exam' | 'Quiz' | 'Assignment' | 'Project';
-
 export type EffortLevel = '1_day' | '2_days' | '3_days'; // 1 sesión (2h), 2 sesiones (4h), 3 sesiones (6h)
 
 export interface ExamData {
   name: string;
   date: string; // YYYY-MM-DD
-  priority: Priority;
-  type: ExamType;
   effortLevel: EffortLevel;
 }
 

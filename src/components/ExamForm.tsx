@@ -1,7 +1,7 @@
 "use client";
 
-import { ExamData, EffortLevel, Priority, ExamType } from "@/types";
-import { BookOpen, Calendar, Clock, Flag, Tag } from "lucide-react";
+import { ExamData, EffortLevel } from "@/types";
+import { BookOpen, Calendar, Clock } from "lucide-react";
 
 interface ExamFormProps {
   examData: ExamData;
@@ -55,44 +55,6 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
             onChange={(e) => handleChange("date", e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none transition-all color-scheme-dark"
           />
-        </div>
-
-        {/* Prioridad y Tipo en Grilla */}
-        <div className="grid grid-cols-2 gap-4">
-          {/* Prioridad */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Flag className="w-3.5 h-3.5 text-rose-400" />
-              Prioridad
-            </label>
-            <select
-              value={examData.priority}
-              onChange={(e) => handleChange("priority", e.target.value as Priority)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-100 outline-none transition-all"
-            >
-              <option value="High">Alta (High)</option>
-              <option value="Medium">Media (Medium)</option>
-              <option value="Low">Baja (Low)</option>
-            </select>
-          </div>
-
-          {/* Tipo */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-purple-400" />
-              Tipo
-            </label>
-            <select
-              value={examData.type}
-              onChange={(e) => handleChange("type", e.target.value as ExamType)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-100 outline-none transition-all"
-            >
-              <option value="Exam">Examen (Exam)</option>
-              <option value="Quiz">Prueba Corta (Quiz)</option>
-              <option value="Assignment">Tarea/Entrega (Assignment)</option>
-              <option value="Project">Proyecto (Project)</option>
-            </select>
-          </div>
         </div>
 
         {/* Nivel de Esfuerzo / Sesiones */}

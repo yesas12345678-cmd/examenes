@@ -14,8 +14,6 @@ export default function Dashboard() {
   const [examData, setExamData] = useState<ExamData>({
     name: "",
     date: new Date().toISOString().split("T")[0],
-    priority: "High",
-    type: "Exam",
     effortLevel: "1_day",
   });
 
