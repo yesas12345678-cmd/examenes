@@ -178,75 +178,7 @@ export async function getUpcomingCalendarEvents(
 
   const virtualSlots: CalendarSlot[] = [];
 
-  // 1. Generar slots virtuales para huecos diurnos vacíos (de 08:00 a 21:00) si no hay eventos ocupados
-  for (let d = 0; d < daysAhead; d++) {
-    const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-    const year = dayDate.getFullYear();
-    const month = dayDate.getMonth();
-    const dateNum = dayDate.getDate();
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
-
-    for (let hour = 8; hour < 21; hour++) {
-      const slotStartNaive = createNaiveLocalIsoString(year, month, dateNum, hour, 0);
-      const slotEndNaive = createNaiveLocalIsoString(year, month, dateNum, hour + 1, 0);
-
-      const slotStartTime = new Date(createSpainIsoString(year, month, dateNum, hour, 0)).getTime();
-      const slotEndTime = new Date(createSpainIsoString(year, month, dateNum, hour + 1, 0)).getTime();
-
-      // Comprobar si hay eventos ocupados solapando esta hora
-      const hasBusyOverlap = items.some((item) => {
-        const itemStartIso = item.start?.dateTime || item.start?.date;
-        const itemEndIso = item.end?.dateTime || item.end?.date;
-        if (!itemStartIso || !itemEndIso) return false;
-
-        const summary = item.summary ? item.summary.trim() : "";
-        const lowerSummary = summary.toLowerCase();
-        const isTimePattern = /^\d{1,2}:\d{2}\s*(?:-|a)\s*\d{1,2}:\d{2}$/i.test(summary);
-
-        const isBlock =
-          summary === "" ||
-          isTimePattern ||
-          lowerSummary.includes("timeblock") ||
-          lowerSummary.includes("libre") ||
-          lowerSummary.includes("disponible") ||
-          lowerSummary.includes("bloque") ||
-          lowerSummary.includes("slot") ||
-          lowerSummary.includes("estudio") ||
-          lowerSummary === "(sin título)" ||
-          lowerSummary === "no title";
-
-        if (isBlock) return false; // Ignorar bloques de tiempo libre
-
-        const itemStart = new Date(itemStartIso).getTime();
-        const itemEnd = new Date(itemEndIso).getTime();
-
-        return itemStart < slotEndTime - 60000 && itemEnd > slotStartTime + 60000;
-      });
-
-      // Comprobar si ya existe un evento mapeado para esta hora exacta
-      const existingMapped = mappedEvents.find((e) => {
-        if (!e.start) return false;
-        const eStart = new Date(e.start).getTime();
-        const targetStart = new Date(slotStartNaive).getTime();
-        return Math.abs(eStart - targetStart) < 15 * 60 * 1000;
-      });
-
-      if (!hasBusyOverlap && !existingMapped) {
-        const padH = String(hour).padStart(2, "0");
-        const padNextH = String(hour + 1).padStart(2, "0");
-        virtualSlots.push({
-          id: `virtual_${padH}00_${dateStr}`,
-          summary: `Bloque Libre (${padH}:00 - ${padNextH}:00)`,
-          start: slotStartNaive,
-          end: slotEndNaive,
-          isTimeBlock: true,
-          isVirtual: true,
-        });
-      }
-    }
-  }
-
-  // 2. Inyectar Bloques Nocturnos Fijos (21:10 - 22:00 y 22:00 - 23:00 en L, M, X, J, D)
+  // Inyectar ÚNICAMENTE los Bloques Nocturnos Fijos solicitados (21:10 - 22:00 y 22:00 - 23:00 en L, M, X, J y D)
   const allowedNightDays = [0, 1, 2, 3, 4]; // Dom, Lun, Mar, Mié, Jue
 
   for (let d = 0; d < daysAhead; d++) {
