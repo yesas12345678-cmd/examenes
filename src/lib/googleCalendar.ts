@@ -9,7 +9,7 @@ export function getGoogleCalendarClient(accessToken: string) {
 
 /**
  * Formatea una fecha local como string ISO sin offset (ej: 2026-09-07T21:10:00)
- * para garantizar que el navegador interprete exactamente 21:10 localmente sin desplazamientos.
+ * para garantizar que el navegador interprete exactamente las 21:10 y 22:00 localmente.
  */
 function createNaiveLocalIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
   const pad = (num: number) => String(num).padStart(2, "0");
@@ -26,7 +26,7 @@ function createSpainIsoString(year: number, month: number, day: number, hours: n
 
 /**
  * Obtiene los eventos de los próximos X días de Google Calendar
- * e inyecta las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
+ * e inyecta y fuerza SIEMPRE las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
  * para Lunes, Martes, Miércoles, Jueves y Domingo.
  */
 export async function getUpcomingCalendarEvents(
@@ -96,16 +96,19 @@ export async function getUpcomingCalendarEvents(
       const start2200 = createNaiveLocalIsoString(year, month, dateNum, 22, 0);
       const end2300 = createNaiveLocalIsoString(year, month, dateNum, 23, 0);
 
-      // Comprobar si ya existe evento mapeado para 21:10 - 22:00
+      // Comprobar si existe evento para 21:10 - 22:00
       const existing2110 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
         const targetStart = new Date(createSpainIsoString(year, month, dateNum, 21, 10));
-        return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
+        return Math.abs(eStart.getTime() - targetStart.getTime()) < 20 * 60 * 1000;
       });
 
       if (existing2110) {
         existing2110.isDefaultNightSlot = true;
+        existing2110.start = start2110;
+        existing2110.end = end2200; // Forzar hora final a 22:00
+        existing2110.isTimeBlock = true;
       } else {
         virtualSlots.push({
           id: `virtual_2110_${dateStr}`,
@@ -118,16 +121,19 @@ export async function getUpcomingCalendarEvents(
         });
       }
 
-      // Comprobar si ya existe evento mapeado para 22:00 - 23:00
+      // Comprobar si existe evento para 22:00 - 23:00
       const existing2200 = mappedEvents.find((e) => {
         if (!e.start) return false;
         const eStart = new Date(e.start);
         const targetStart = new Date(createSpainIsoString(year, month, dateNum, 22, 0));
-        return Math.abs(eStart.getTime() - targetStart.getTime()) < 15 * 60 * 1000;
+        return Math.abs(eStart.getTime() - targetStart.getTime()) < 20 * 60 * 1000;
       });
 
       if (existing2200) {
         existing2200.isDefaultNightSlot = true;
+        existing2200.start = start2200;
+        existing2200.end = end2300; // Forzar hora final a 23:00 (evita que marque 22:15)
+        existing2200.isTimeBlock = true;
       } else {
         virtualSlots.push({
           id: `virtual_2200_${dateStr}`,
@@ -152,7 +158,7 @@ export async function getUpcomingCalendarEvents(
 /**
  * Procesa la sincronización de un bloque.
  * Elimina automáticamente eventos conflictivos existentes en la ventana 21:00 - 23:05 de ese día
- * (como pc, lecture, descanso, acotame) y crea el bloque de estudio.
+ * (como pc, lecture, descanso, acotame) y crea el bloque de estudio completo.
  */
 export async function syncSlotInstance(
   accessToken: string,
@@ -182,9 +188,19 @@ export async function syncSlotInstance(
       endIso = createSpainIsoString(year, month - 1, day, 23, 0);
     }
   } else if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
-    // Si era una cadena local sin offset, agregar el offset de España +02:00
-    startIso = `${startIso}+02:00`;
-    if (endIso) endIso = `${endIso}+02:00`;
+    // Si era una cadena local sin offset, deducir si es 21:10 o 22:00
+    if (startIso.includes("T21:10")) {
+      const parts = startIso.split("T")[0].split("-").map(Number);
+      startIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 21, 10);
+      endIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 22, 0);
+    } else if (startIso.includes("T22:00")) {
+      const parts = startIso.split("T")[0].split("-").map(Number);
+      startIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 22, 0);
+      endIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 23, 0);
+    } else {
+      startIso = `${startIso}+02:00`;
+      if (endIso) endIso = `${endIso}+02:00`;
+    }
   }
 
   // 1. Limpiar/eliminar cualquier evento existente en Google Calendar en la ventana 21:00 a 23:05 de ese día
@@ -232,7 +248,7 @@ export async function syncSlotInstance(
     }
   }
 
-  // 2. Crear o actualizar el evento en Google Calendar
+  // 2. Crear o actualizar el evento en Google Calendar con la hora exacta
   if (startIso && endIso) {
     const response = await calendar.events.insert({
       calendarId: "primary",
@@ -245,7 +261,6 @@ export async function syncSlotInstance(
     return response.data;
   }
 
-  // Fallback si fuera un ID de evento regular
   const response = await calendar.events.patch({
     calendarId: "primary",
     eventId: slotId,
