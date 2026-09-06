@@ -8,36 +8,17 @@ export function getGoogleCalendarClient(accessToken: string) {
 }
 
 /**
- * Genera un ISO String manteniendo la hora local exacta y la zona horaria (offset)
- * sin desplazar las horas a UTC.
+ * Genera un ISO String formateado explícitamente para España (+02:00 CEST)
+ * evitando que el servidor en UTC de Vercel desplace la hora al navegador.
  */
-function createLocalIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
-  const date = new Date(year, month, day, hours, minutes, 0, 0);
-  const tzo = -date.getTimezoneOffset();
-  const dif = tzo >= 0 ? "+" : "-";
-  const pad = (num: number) => String(Math.floor(Math.abs(num))).padStart(2, "0");
-
-  return (
-    date.getFullYear() +
-    "-" +
-    pad(date.getMonth() + 1) +
-    "-" +
-    pad(date.getDate()) +
-    "T" +
-    pad(date.getHours()) +
-    ":" +
-    pad(date.getMinutes()) +
-    ":00" +
-    dif +
-    pad(tzo / 60) +
-    ":" +
-    pad(tzo % 60)
-  );
+function createSpainIsoString(year: number, month: number, day: number, hours: number, minutes: number = 0) {
+  const pad = (num: number) => String(num).padStart(2, "0");
+  return `${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00+02:00`;
 }
 
 /**
  * Obtiene los eventos de los próximos X días de Google Calendar
- * e inyecta siempre disponibles las sesiones de 21:10 - 22:00 y 22:00 - 23:00
+ * e inyecta las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
  * para Lunes, Martes, Miércoles, Jueves y Domingo.
  */
 export async function getUpcomingCalendarEvents(
@@ -101,11 +82,11 @@ export async function getUpcomingCalendarEvents(
       const dateNum = dayDate.getDate();
       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
 
-      const start2110 = createLocalIsoString(year, month, dateNum, 21, 10);
-      const end2200 = createLocalIsoString(year, month, dateNum, 22, 0);
+      const start2110 = createSpainIsoString(year, month, dateNum, 21, 10);
+      const end2200 = createSpainIsoString(year, month, dateNum, 22, 0);
 
-      const start2200 = createLocalIsoString(year, month, dateNum, 22, 0);
-      const end2300 = createLocalIsoString(year, month, dateNum, 23, 0);
+      const start2200 = createSpainIsoString(year, month, dateNum, 22, 0);
+      const end2300 = createSpainIsoString(year, month, dateNum, 23, 0);
 
       // Comprobar si ya existe evento mapeado para 21:10 - 22:00
       const existing2110 = mappedEvents.find((e) => {
@@ -186,11 +167,11 @@ export async function syncSlotInstance(
     const [year, month, day] = dateStr.split("-").map(Number);
 
     if (code === "2110") {
-      startIso = createLocalIsoString(year, month - 1, day, 21, 10);
-      endIso = createLocalIsoString(year, month - 1, day, 22, 0);
+      startIso = createSpainIsoString(year, month - 1, day, 21, 10);
+      endIso = createSpainIsoString(year, month - 1, day, 22, 0);
     } else {
-      startIso = createLocalIsoString(year, month - 1, day, 22, 0);
-      endIso = createLocalIsoString(year, month - 1, day, 23, 0);
+      startIso = createSpainIsoString(year, month - 1, day, 22, 0);
+      endIso = createSpainIsoString(year, month - 1, day, 23, 0);
     }
   }
 
@@ -198,14 +179,14 @@ export async function syncSlotInstance(
   if (startIso && endIso) {
     try {
       const slotStartDate = new Date(startIso);
-      const windowStart = createLocalIsoString(
+      const windowStart = createSpainIsoString(
         slotStartDate.getFullYear(),
         slotStartDate.getMonth(),
         slotStartDate.getDate(),
         21,
         0
       );
-      const windowEnd = createLocalIsoString(
+      const windowEnd = createSpainIsoString(
         slotStartDate.getFullYear(),
         slotStartDate.getMonth(),
         slotStartDate.getDate(),
