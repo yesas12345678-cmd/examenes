@@ -107,6 +107,7 @@ export default function Dashboard() {
         body: JSON.stringify({
           exam: examData,
           selectedSlotIds,
+          allSlots: events,
         }),
       });
 

@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { CalendarSlot, EffortLevel } from "@/types";
-import { Calendar as CalendarIcon, CheckCircle2, Clock, RefreshCw, AlertCircle, Sparkles } from "lucide-react";
-import { format, parseISO, isSameDay, addHours, differenceInMinutes } from "date-fns";
+import { Calendar as CalendarIcon, CheckCircle2, Clock, RefreshCw, AlertCircle, Sparkles, Moon } from "lucide-react";
+import { format, parseISO, differenceInMinutes } from "date-fns";
 import { es } from "date-fns/locale";
 
 interface CalendarViewerProps {
@@ -36,7 +36,7 @@ export default function CalendarViewer({
 
   // Filtrar eventos si se desea ver solo Time Blocks libres
   const displayedEvents = filterTimeBlocksOnly
-    ? events.filter((e) => e.isTimeBlock)
+    ? events.filter((e) => e.isTimeBlock || e.isDefaultNightSlot)
     : events;
 
   // Agrupar eventos por día para renderizado ordenado
@@ -59,7 +59,7 @@ export default function CalendarViewer({
 
     // Buscar bloque que empiece justo cuando termine targetSlot (siguiente hora)
     const nextSlot = events.find((e) => {
-      if (e.id === targetSlot.id || !e.isTimeBlock) return false;
+      if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
       const start = parseISO(e.start);
       return Math.abs(differenceInMinutes(start, targetEnd)) <= 5;
     });
@@ -68,7 +68,7 @@ export default function CalendarViewer({
 
     // Si no hay siguiente, buscar bloque que termine justo cuando empiece targetSlot (hora anterior)
     const prevSlot = events.find((e) => {
-      if (e.id === targetSlot.id || !e.isTimeBlock) return false;
+      if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
       const end = parseISO(e.end);
       return Math.abs(differenceInMinutes(end, targetStart)) <= 5;
     });
@@ -80,7 +80,7 @@ export default function CalendarViewer({
    * Manejador al hacer clic en un bloque de 1 hora
    */
   const handleSlotClick = (slot: CalendarSlot) => {
-    if (!slot.isTimeBlock) return;
+    if (!slot.isTimeBlock && !slot.isDefaultNightSlot) return;
 
     const isAlreadySelected = selectedSlotIds.includes(slot.id);
 
@@ -114,7 +114,6 @@ export default function CalendarViewer({
 
     // Si excede el máximo de bloques, descartar la pareja más antigua
     if (newSelected.length > maxSlots) {
-      // Conservar las parejas más recientes
       newSelected = newSelected.slice(newSelected.length - maxSlots);
     }
 
@@ -132,7 +131,7 @@ export default function CalendarViewer({
           <div>
             <h2 className="text-lg font-semibold text-slate-100">Visor de Time Blocking</h2>
             <p className="text-xs text-slate-400">
-              Eventos de Google Calendar (próximos 14 días)
+              Google Calendar (con bloques de noche de 21:00 a 23:00 en Lun, Mar, Mié, Jue y Dom)
             </p>
           </div>
         </div>
@@ -197,9 +196,11 @@ export default function CalendarViewer({
 
             return (
               <div key={dateStr} className="space-y-2">
-                <div className="text-xs font-semibold text-indigo-300 capitalize flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                  {formattedDate}
+                <div className="text-xs font-semibold text-indigo-300 capitalize flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                    {formattedDate}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -215,6 +216,8 @@ export default function CalendarViewer({
                         className={`p-3 rounded-xl border text-left transition-all duration-200 flex items-center justify-between group ${
                           isSelected
                             ? "bg-indigo-600/20 border-indigo-500 text-white shadow-lg shadow-indigo-500/10 ring-1 ring-indigo-500/50"
+                            : slot.isDefaultNightSlot
+                            ? "bg-purple-950/30 hover:bg-purple-900/40 border-purple-800/50 text-purple-200"
                             : slot.isTimeBlock
                             ? "bg-slate-950/80 hover:bg-slate-800/80 border-slate-800 hover:border-slate-700 text-slate-200"
                             : "bg-slate-950/30 border-slate-900 text-slate-500 opacity-60 cursor-not-allowed"
@@ -222,15 +225,20 @@ export default function CalendarViewer({
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs font-medium">
-                            <Clock className={`w-3.5 h-3.5 ${isSelected ? "text-indigo-400" : "text-slate-400"}`} />
+                            <Clock className={`w-3.5 h-3.5 ${isSelected ? "text-indigo-400" : slot.isDefaultNightSlot ? "text-purple-400" : "text-slate-400"}`} />
                             <span>{startTime} - {endTime}</span>
+                            {slot.isDefaultNightSlot && (
+                              <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-semibold border border-purple-500/30 flex items-center gap-1">
+                                <Moon className="w-2.5 h-2.5" /> Noche
+                              </span>
+                            )}
                           </div>
-                          <p className={`text-xs ${isSelected ? "text-indigo-200 font-semibold" : "text-slate-400"}`}>
+                          <p className={`text-xs ${isSelected ? "text-indigo-200 font-semibold" : slot.isDefaultNightSlot ? "text-purple-300" : "text-slate-400"}`}>
                             {slot.summary}
                           </p>
                         </div>
 
-                        {slot.isTimeBlock && (
+                        {(slot.isTimeBlock || slot.isDefaultNightSlot) && (
                           <div className="pl-2">
                             {isSelected ? (
                               <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center">

@@ -13,11 +13,14 @@ export interface CalendarSlot {
   end: string;   // ISO String
   recurringEventId?: string;
   isTimeBlock: boolean; // Evento vacío o reservado para time blocking
+  isVirtual?: boolean;  // Bloque por defecto no creado aún en Google Calendar
+  isDefaultNightSlot?: boolean; // Bloque predeterminado de noche (21:00-23:00)
 }
 
 export interface SyncPayload {
   exam: ExamData;
   selectedSlotIds: string[];
+  allSlots?: CalendarSlot[]; // Opcional para pasar la lista completa de slots con sus metas
 }
 
 export interface ApiResponse<T = any> {

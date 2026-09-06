@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { patchCalendarEventInstance } from "@/lib/googleCalendar";
+import { syncSlotInstance } from "@/lib/googleCalendar";
 import { SyncPayload } from "@/types";
 
 export async function POST(request: Request) {
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const body: SyncPayload = await request.json();
-    const { exam, selectedSlotIds } = body;
+    const { exam, selectedSlotIds, allSlots } = body;
 
     // Validaciones básicas
     if (!exam || !exam.name || !exam.date) {
@@ -50,16 +50,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Actualizar Instancias específicas en Google Calendar (This event / instance only)
+    // Procesar la creación/actualización de bloques en Google Calendar
     const updatedCalendarEvents = [];
     const calendarErrors = [];
 
     for (const instanceId of selectedSlotIds) {
       try {
-        const result = await patchCalendarEventInstance(
+        const result = await syncSlotInstance(
           session.accessToken,
           instanceId,
-          exam.name
+          exam.name,
+          allSlots || []
         );
         updatedCalendarEvents.push(result);
       } catch (err: any) {
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: `Ocurrió un fallo al actualizar en Google Calendar: ${calendarErrors.join(", ")}`,
+          error: `Ocurrió un fallo al procesar los bloques en Google Calendar: ${calendarErrors.join(", ")}`,
         },
         { status: 500 }
       );
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `¡Genial! Se han renombrado ${updatedCalendarEvents.length} bloques de estudio en tu Google Calendar como "Estudio: ${exam.name}".`,
+      message: `¡Genial! Se han reservado ${updatedCalendarEvents.length} bloques de estudio en tu Google Calendar como "Estudio: ${exam.name}".`,
       data: {
         updatedBlocksCount: updatedCalendarEvents.length,
       },
