@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
+  --background: #030712;
   --foreground: #f8fafc;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  overflow-x: hidden;
 }
 
 /* Custom Scrollbar Styling */
@@ -32,3 +33,35 @@ body {
 .color-scheme-dark {
   color-scheme: dark;
 }
+
+/* Shimmer animation for primary action buttons */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.9) 0%,
+    rgba(168, 85, 247, 0.9) 25%,
+    rgba(236, 72, 153, 0.9) 50%,
+    rgba(168, 85, 247, 0.9) 75%,
+    rgba(99, 102, 241, 0.9) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 4s infinite linear;
+}
+
+/* Ambient Radial Glow Background */
+.bg-cyber-glow {
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
+    radial-gradient(circle at 85% 65%, rgba(168, 85, 247, 0.15) 0%, transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.08) 0%, transparent 50%);
+}
+
