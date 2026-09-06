@@ -94,8 +94,9 @@ export async function createAllDayExamEvent(accessToken: string, exam: ExamData)
 
 /**
  * Obtiene los eventos de los próximos X días de Google Calendar
- * e inyecta las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00
- * para Lunes, Martes, Miércoles, Jueves y Domingo.
+ * - Detecta eventos con títulos de rango horario (ej: "09:00 - 10:00", "16:00 - 17:00") como bloques libres.
+ * - Genera bloques virtuales para huecos diurnos vacíos entre las 08:00 y las 21:00.
+ * - Inyecta las sesiones fijas de 21:10 - 22:00 y 22:00 - 23:00 para Lun, Mar, Mié, Jue y Dom.
  */
 export async function getUpcomingCalendarEvents(
   accessToken: string,
@@ -122,35 +123,137 @@ export async function getUpcomingCalendarEvents(
   const mappedEvents: CalendarSlot[] = items.map((item) => {
     const summary = item.summary ? item.summary.trim() : "";
     const lowerSummary = summary.toLowerCase();
+
+    // Regex para detectar títulos tipo "09:00 - 10:00", "09:00-10:00", "16:00 - 17:00", "16:00a17:00", etc.
+    const isTimePattern = /^\d{1,2}:\d{2}\s*(?:-|a)\s*\d{1,2}:\d{2}$/i.test(summary);
+
     const isTimeBlock =
       summary === "" ||
-      lowerSummary === "timeblock" ||
-      lowerSummary === "time block" ||
-      lowerSummary === "libre" ||
-      lowerSummary === "disponible" ||
-      lowerSummary === "bloque de estudio" ||
+      isTimePattern ||
+      lowerSummary.includes("timeblock") ||
+      lowerSummary.includes("time block") ||
+      lowerSummary.includes("libre") ||
+      lowerSummary.includes("disponible") ||
+      lowerSummary.includes("bloque") ||
+      lowerSummary.includes("slot") ||
+      lowerSummary.includes("estudio") ||
       lowerSummary === "(sin título)" ||
       lowerSummary === "no title";
+
+    let startStr = item.start?.dateTime || item.start?.date || "";
+    let endStr = item.end?.dateTime || item.end?.date || "";
+
+    if (startStr.includes("T")) {
+      const dStart = new Date(startStr);
+      startStr = createNaiveLocalIsoString(
+        dStart.getFullYear(),
+        dStart.getMonth(),
+        dStart.getDate(),
+        dStart.getHours(),
+        dStart.getMinutes()
+      );
+    }
+
+    if (endStr.includes("T")) {
+      const dEnd = new Date(endStr);
+      endStr = createNaiveLocalIsoString(
+        dEnd.getFullYear(),
+        dEnd.getMonth(),
+        dEnd.getDate(),
+        dEnd.getHours(),
+        dEnd.getMinutes()
+      );
+    }
 
     return {
       id: item.id || "",
       summary: summary || "Bloque Libre",
-      start: item.start?.dateTime || item.start?.date || "",
-      end: item.end?.dateTime || item.end?.date || "",
+      start: startStr,
+      end: endStr,
       recurringEventId: item.recurringEventId || undefined,
       isTimeBlock,
       isVirtual: false,
     };
   });
 
-  const allowedDays = [0, 1, 2, 3, 4];
   const virtualSlots: CalendarSlot[] = [];
+
+  // 1. Generar slots virtuales para huecos diurnos vacíos (de 08:00 a 21:00) si no hay eventos ocupados
+  for (let d = 0; d < daysAhead; d++) {
+    const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+    const year = dayDate.getFullYear();
+    const month = dayDate.getMonth();
+    const dateNum = dayDate.getDate();
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(dateNum).padStart(2, "0")}`;
+
+    for (let hour = 8; hour < 21; hour++) {
+      const slotStartNaive = createNaiveLocalIsoString(year, month, dateNum, hour, 0);
+      const slotEndNaive = createNaiveLocalIsoString(year, month, dateNum, hour + 1, 0);
+
+      const slotStartTime = new Date(createSpainIsoString(year, month, dateNum, hour, 0)).getTime();
+      const slotEndTime = new Date(createSpainIsoString(year, month, dateNum, hour + 1, 0)).getTime();
+
+      // Comprobar si hay eventos ocupados solapando esta hora
+      const hasBusyOverlap = items.some((item) => {
+        const itemStartIso = item.start?.dateTime || item.start?.date;
+        const itemEndIso = item.end?.dateTime || item.end?.date;
+        if (!itemStartIso || !itemEndIso) return false;
+
+        const summary = item.summary ? item.summary.trim() : "";
+        const lowerSummary = summary.toLowerCase();
+        const isTimePattern = /^\d{1,2}:\d{2}\s*(?:-|a)\s*\d{1,2}:\d{2}$/i.test(summary);
+
+        const isBlock =
+          summary === "" ||
+          isTimePattern ||
+          lowerSummary.includes("timeblock") ||
+          lowerSummary.includes("libre") ||
+          lowerSummary.includes("disponible") ||
+          lowerSummary.includes("bloque") ||
+          lowerSummary.includes("slot") ||
+          lowerSummary.includes("estudio") ||
+          lowerSummary === "(sin título)" ||
+          lowerSummary === "no title";
+
+        if (isBlock) return false; // Ignorar bloques de tiempo libre
+
+        const itemStart = new Date(itemStartIso).getTime();
+        const itemEnd = new Date(itemEndIso).getTime();
+
+        return itemStart < slotEndTime - 60000 && itemEnd > slotStartTime + 60000;
+      });
+
+      // Comprobar si ya existe un evento mapeado para esta hora exacta
+      const existingMapped = mappedEvents.find((e) => {
+        if (!e.start) return false;
+        const eStart = new Date(e.start).getTime();
+        const targetStart = new Date(slotStartNaive).getTime();
+        return Math.abs(eStart - targetStart) < 15 * 60 * 1000;
+      });
+
+      if (!hasBusyOverlap && !existingMapped) {
+        const padH = String(hour).padStart(2, "0");
+        const padNextH = String(hour + 1).padStart(2, "0");
+        virtualSlots.push({
+          id: `virtual_${padH}00_${dateStr}`,
+          summary: `Bloque Libre (${padH}:00 - ${padNextH}:00)`,
+          start: slotStartNaive,
+          end: slotEndNaive,
+          isTimeBlock: true,
+          isVirtual: true,
+        });
+      }
+    }
+  }
+
+  // 2. Inyectar Bloques Nocturnos Fijos (21:10 - 22:00 y 22:00 - 23:00 en L, M, X, J, D)
+  const allowedNightDays = [0, 1, 2, 3, 4]; // Dom, Lun, Mar, Mié, Jue
 
   for (let d = 0; d < daysAhead; d++) {
     const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
     const dayOfWeek = dayDate.getDay();
 
-    if (allowedDays.includes(dayOfWeek)) {
+    if (allowedNightDays.includes(dayOfWeek)) {
       const year = dayDate.getFullYear();
       const month = dayDate.getMonth();
       const dateNum = dayDate.getDate();
@@ -220,9 +323,8 @@ export async function getUpcomingCalendarEvents(
 
 /**
  * Procesa la sincronización de un bloque de estudio.
- * - Elimina únicamente eventos estrictamente DENTRO de las 21:10 a 23:00 de ese día.
- * - Preserva intactos 'aseo y cena' (que termina a las 21:10) y 'acotame' (que empieza a las 23:00).
- * - Aplica el color Azul (colorId: "9") y recordatorio en el minuto 0.
+ * - Elimina únicamente eventos estrictamente DENTRO de las 21:10 a 23:00 de ese día si es bloque nocturno.
+ * - Reemplaza eventos de rango horario (ej: "09:00 - 10:00") o crea nuevos con el color Azul (colorId: "9").
  */
 export async function syncSlotInstance(
   accessToken: string,
@@ -238,36 +340,23 @@ export async function syncSlotInstance(
   let startIso = targetSlot?.start;
   let endIso = targetSlot?.end;
 
-  if (slotId.startsWith("virtual_")) {
-    const parts = slotId.split("_");
-    const code = parts[1];
-    const dateStr = parts[2];
-    const [year, month, day] = dateStr.split("-").map(Number);
-
-    if (code === "2110") {
-      startIso = createSpainIsoString(year, month - 1, day, 21, 10);
-      endIso = createSpainIsoString(year, month - 1, day, 22, 0);
-    } else {
-      startIso = createSpainIsoString(year, month - 1, day, 22, 0);
-      endIso = createSpainIsoString(year, month - 1, day, 23, 0);
-    }
-  } else if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
-    if (startIso.includes("T21:10")) {
-      const parts = startIso.split("T")[0].split("-").map(Number);
-      startIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 21, 10);
-      endIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 22, 0);
-    } else if (startIso.includes("T22:00")) {
-      const parts = startIso.split("T")[0].split("-").map(Number);
-      startIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 22, 0);
-      endIso = createSpainIsoString(parts[0], parts[1] - 1, parts[2], 23, 0);
-    } else {
-      startIso = `${startIso}+02:00`;
-      if (endIso) endIso = `${endIso}+02:00`;
-    }
+  // Convertir strings Naive Local a ISO de España con offset (+02:00)
+  if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
+    const [dPart, tPart] = startIso.split("T");
+    const [year, month, day] = dPart.split("-").map(Number);
+    const [hours, minutes] = tPart.split(":").map(Number);
+    startIso = createSpainIsoString(year, month - 1, day, hours, minutes);
   }
 
-  // 1. Limpieza estricta: Eliminar ÚNICAMENTE eventos que empiecen a las 21:10 o después Y terminen a las 23:00 o antes
-  if (startIso && endIso) {
+  if (endIso && !endIso.includes("+") && !endIso.includes("Z")) {
+    const [dPart, tPart] = endIso.split("T");
+    const [year, month, day] = dPart.split("-").map(Number);
+    const [hours, minutes] = tPart.split(":").map(Number);
+    endIso = createSpainIsoString(year, month - 1, day, hours, minutes);
+  }
+
+  // Limpieza previa estricta solo para franja nocturna 21:10-23:00
+  if (startIso && endIso && startIso.includes("T21:10")) {
     try {
       const slotStartDate = new Date(startIso);
       const windowStart = createSpainIsoString(
@@ -306,9 +395,6 @@ export async function syncSlotInstance(
         const evStart = new Date(evStartIso);
         const evEnd = new Date(evEndIso);
 
-        // Verificación estricta de límites:
-        // - 'aseo y cena' termina a las 21:10 -> NO se elimina (evStart < 21:10)
-        // - 'acotame' empieza a las 23:00 -> NO se elimina (evEnd > 23:00)
         const startsInside = evStart.getTime() >= targetWindowStart.getTime() - 2 * 60 * 1000;
         const endsInside = evEnd.getTime() <= targetWindowEnd.getTime() + 2 * 60 * 1000;
 
@@ -318,14 +404,13 @@ export async function syncSlotInstance(
               calendarId: "primary",
               eventId: ev.id,
             });
-            console.log(`Evento reemplazado: ${ev.summary}`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
         }
       }
     } catch (cleanErr) {
-      console.warn("Fallo en la limpieza previa de eventos conflictivos:", cleanErr);
+      console.warn("Fallo en la limpieza previa nocturna:", cleanErr);
     }
   }
 
@@ -335,13 +420,12 @@ export async function syncSlotInstance(
     reminders: {
       useDefault: false,
       overrides: [
-        { method: "popup", minutes: 0 }, // Recordatorio al inicio del evento (0 minutos)
+        { method: "popup", minutes: 0 },
       ],
     },
   };
 
-  // 2. Crear o actualizar el evento en Google Calendar
-  if (startIso && endIso) {
+  if (slotId.startsWith("virtual_")) {
     eventRequestBody.start = { dateTime: startIso };
     eventRequestBody.end = { dateTime: endIso };
 
@@ -352,6 +436,9 @@ export async function syncSlotInstance(
     return response.data;
   }
 
+  eventRequestBody.start = { dateTime: startIso };
+  eventRequestBody.end = { dateTime: endIso };
+
   const response = await calendar.events.patch({
     calendarId: "primary",
     eventId: slotId,
@@ -360,3 +447,4 @@ export async function syncSlotInstance(
 
   return response.data;
 }
+
