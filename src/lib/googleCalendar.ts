@@ -242,19 +242,40 @@ export async function syncSlotInstance(
   let startIso = targetSlot?.start;
   let endIso = targetSlot?.end;
 
+  // Fallback si no está el targetSlot en allSlots
+  if (!startIso || !endIso) {
+    const match = slotId.match(/^virtual_(\d{2})(\d{2})_(\d{4}-\d{2}-\d{2})$/);
+    if (match) {
+      const [, sh, sm, dateStr] = match;
+      const h = Number(sh);
+      const m = Number(sm);
+      const [year, month, day] = dateStr.split("-").map(Number);
+      startIso = createNaiveLocalIsoString(year, month - 1, day, h, m);
+      let endH = h + 1;
+      let endM = m;
+      if (h === 21 && m === 10) {
+        endH = 22;
+        endM = 0;
+      }
+      endIso = createNaiveLocalIsoString(year, month - 1, day, endH, endM);
+    }
+  }
+
   // Extraer día de la semana y horas/minutos locales para comprobar si es sustituible
   let dayOfWeek = -1;
   let hours = -1;
   let minutes = -1;
 
-  if (targetSlot?.start) {
-    const [dPart, tPart] = targetSlot.start.split("T");
-    const [year, month, day] = dPart.split("-").map(Number);
-    const [h, m] = tPart.split(":").map(Number);
-    const d = new Date(year, month - 1, day);
-    dayOfWeek = d.getDay();
-    hours = h;
-    minutes = m;
+  if (startIso) {
+    const [dPart, tPart] = startIso.split("T");
+    if (dPart && tPart) {
+      const [year, month, day] = dPart.split("-").map(Number);
+      const [h, m] = tPart.split(":").map(Number);
+      const d = new Date(year, month - 1, day);
+      dayOfWeek = d.getDay();
+      hours = h;
+      minutes = m;
+    }
   }
 
   const isNightSlot =
@@ -271,51 +292,56 @@ export async function syncSlotInstance(
   if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
     const [dPart, tPart] = startIso.split("T");
     const [year, month, day] = dPart.split("-").map(Number);
-    const [hours, minutes] = tPart.split(":").map(Number);
-    startIso = createSpainIsoString(year, month - 1, day, hours, minutes);
+    const [h, m] = tPart.split(":").map(Number);
+    startIso = createSpainIsoString(year, month - 1, day, h, m);
   }
 
   if (endIso && !endIso.includes("+") && !endIso.includes("Z")) {
     const [dPart, tPart] = endIso.split("T");
     const [year, month, day] = dPart.split("-").map(Number);
-    const [hours, minutes] = tPart.split(":").map(Number);
-    endIso = createSpainIsoString(year, month - 1, day, hours, minutes);
+    const [h, m] = tPart.split(":").map(Number);
+    endIso = createSpainIsoString(year, month - 1, day, h, m);
   }
 
   // Limpieza previa de sustitución SOLO para bloques de noche o Martes/Jueves tarde (16:00-18:00)
   if (allowSubstitution && startIso && endIso) {
     try {
+      const targetWindowStart = new Date(startIso).getTime();
+      const targetWindowEnd = new Date(endIso).getTime();
+
+      // Ampliar 1 minuto la consulta a la API para capturar eventos que tocan los bordes
+      const queryTimeMin = new Date(targetWindowStart - 60 * 1000).toISOString();
+      const queryTimeMax = new Date(targetWindowEnd + 60 * 1000).toISOString();
+
       const existingInWindow = await calendar.events.list({
         calendarId: "primary",
-        timeMin: startIso,
-        timeMax: endIso,
+        timeMin: queryTimeMin,
+        timeMax: queryTimeMax,
         singleEvents: true,
       });
 
       const eventsToDelete = existingInWindow.data.items || [];
-      const targetWindowStart = new Date(startIso);
-      const targetWindowEnd = new Date(endIso);
 
       for (const ev of eventsToDelete) {
         if (!ev.id || ev.summary?.startsWith("Estudio:")) continue;
 
-        const evStartIso = ev.start?.dateTime || ev.start?.date;
-        const evEndIso = ev.end?.dateTime || ev.end?.date;
+        const evStartIso = ev.start?.dateTime;
+        const evEndIso = ev.end?.dateTime;
         if (!evStartIso || !evEndIso) continue;
 
-        const evStart = new Date(evStartIso);
-        const evEnd = new Date(evEndIso);
+        const evStartMs = new Date(evStartIso).getTime();
+        const evEndMs = new Date(evEndIso).getTime();
 
-        const startsInside = evStart.getTime() >= targetWindowStart.getTime() - 2 * 60 * 1000;
-        const endsInside = evEnd.getTime() <= targetWindowEnd.getTime() + 2 * 60 * 1000;
+        // Detectar cualquier solapamiento: evStart < targetWindowEnd && evEnd > targetWindowStart
+        const overlaps = evStartMs < targetWindowEnd && evEndMs > targetWindowStart;
 
-        if (startsInside && endsInside) {
+        if (overlaps) {
           try {
             await calendar.events.delete({
               calendarId: "primary",
               eventId: ev.id,
             });
-            console.log(`Evento sustituido en la franja: ${ev.summary}`);
+            console.log(`Evento sustituido en la franja: ${ev.summary} (${ev.id})`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
