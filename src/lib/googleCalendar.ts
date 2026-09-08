@@ -242,6 +242,31 @@ export async function syncSlotInstance(
   let startIso = targetSlot?.start;
   let endIso = targetSlot?.end;
 
+  // Extraer día de la semana y horas/minutos locales para comprobar si es sustituible
+  let dayOfWeek = -1;
+  let hours = -1;
+  let minutes = -1;
+
+  if (targetSlot?.start) {
+    const [dPart, tPart] = targetSlot.start.split("T");
+    const [year, month, day] = dPart.split("-").map(Number);
+    const [h, m] = tPart.split(":").map(Number);
+    const d = new Date(year, month - 1, day);
+    dayOfWeek = d.getDay();
+    hours = h;
+    minutes = m;
+  }
+
+  const isNightSlot =
+    !!targetSlot?.isDefaultNightSlot ||
+    ([0, 1, 2, 3, 4].includes(dayOfWeek) &&
+      ((hours === 21 && minutes === 10) || hours === 22));
+
+  const isTuesdayOrThursdayAfternoonSlot =
+    [2, 4].includes(dayOfWeek) && (hours === 16 || hours === 17);
+
+  const allowSubstitution = isNightSlot || isTuesdayOrThursdayAfternoonSlot;
+
   // Convertir strings Naive Local a ISO de España con offset (+02:00)
   if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
     const [dPart, tPart] = startIso.split("T");
@@ -257,8 +282,8 @@ export async function syncSlotInstance(
     endIso = createSpainIsoString(year, month - 1, day, hours, minutes);
   }
 
-  // Limpieza previa de sustitución: Eliminar eventos previos en la franja seleccionada
-  if (startIso && endIso) {
+  // Limpieza previa de sustitución SOLO para bloques de noche o Martes/Jueves tarde (16:00-18:00)
+  if (allowSubstitution && startIso && endIso) {
     try {
       const existingInWindow = await calendar.events.list({
         calendarId: "primary",
