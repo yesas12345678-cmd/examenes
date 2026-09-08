@@ -278,16 +278,6 @@ export async function syncSlotInstance(
     }
   }
 
-  const isNightSlot =
-    !!targetSlot?.isDefaultNightSlot ||
-    ([0, 1, 2, 3, 4].includes(dayOfWeek) &&
-      ((hours === 21 && minutes === 10) || hours === 22));
-
-  const isTuesdayOrThursdayAfternoonSlot =
-    [2, 4].includes(dayOfWeek) && (hours === 16 || hours === 17);
-
-  const allowSubstitution = isNightSlot || isTuesdayOrThursdayAfternoonSlot;
-
   // Convertir strings Naive Local a ISO de España con offset (+02:00)
   if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
     const [dPart, tPart] = startIso.split("T");
@@ -303,8 +293,8 @@ export async function syncSlotInstance(
     endIso = createSpainIsoString(year, month - 1, day, h, m);
   }
 
-  // Limpieza previa de sustitución SOLO para bloques de noche o Martes/Jueves tarde (16:00-18:00)
-  if (allowSubstitution && startIso && endIso) {
+  // Limpieza previa de sustitución: Eliminar cualquier evento previo en la franja seleccionada
+  if (startIso && endIso) {
     try {
       const targetWindowStart = new Date(startIso).getTime();
       const targetWindowEnd = new Date(endIso).getTime();
