@@ -358,12 +358,31 @@ export async function syncSlotInstance(
 }
 
 /**
+ * Determina si un evento es un bloque de time blocking vacío o genérico (ej: "10:00-11:00", "Bloque Libre", etc.)
+ */
+function isEmptyTimeBlock(summary: string | undefined | null): boolean {
+  if (!summary || !summary.trim()) return true;
+  const s = summary.trim();
+  const lower = s.toLowerCase();
+
+  if (lower.startsWith("bloque libre") || lower.startsWith("bloque noche")) return true;
+
+  // Coincide con rangos horarios tipo "10:00-11:00", "10:00 - 11:00", "10:00 – 11:00"
+  const timeRangeRegex = /^\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}$/;
+  if (timeRangeRegex.test(s)) return true;
+
+  return false;
+}
+
+/**
  * Programar Jornada de Pesca para Sábados o Domingos.
- * - Si es Sábado: Las tareas en esa franja se posponen al Domingo (mismo horario).
- * - Si es Domingo: Las tareas en esa franja se atrasan al Sábado (mismo horario).
+ * - Si es Sábado: Las tareas reales en esa franja se posponen al Domingo (mismo horario).
+ * - Si es Domingo: Las tareas reales en esa franja se atrasan al Sábado (mismo horario).
  * - Tareas a eliminar automáticamente: "getupp", "artefactos a mano", "Estudio: b2" (case-insensitive).
- * - Crea evento Timed en Rojo (colorId: '11') con notificación al inicio.
- * - Crea evento All-Day en Rojo (colorId: '11') "jornada de pesca Hstart-Hend".
+ * - Bloques de time blocking vacíos (ej: "10:00-11:00"): No se mueven.
+ * - Si en el día destino no hay tarea real (hay un bloque vacío), la tarea sustituye al bloque vacío sin superponerse.
+ * - Crea evento Timed con el color por defecto del calendario y notificación al inicio.
+ * - Crea evento All-Day con el color por defecto del calendario "jornada de pesca Hstart-Hend".
  */
 export async function scheduleFishingDay(
   accessToken: string,
@@ -437,6 +456,21 @@ export async function scheduleFishingDay(
 
       const summaryLower = summaryTrim.toLowerCase();
 
+      // 1. Si es un bloque de time blocking vacío o genérico (ej: "10:00-11:00" o "Bloque Libre")
+      // NO se pospone/atrasa al otro día. Simplemente lo eliminamos del día de pesca.
+      if (isEmptyTimeBlock(summaryTrim)) {
+        try {
+          await calendar.events.delete({
+            calendarId: "primary",
+            eventId: ev.id,
+          });
+        } catch (delEmptyErr) {
+          console.warn(`Error limpiando bloque vacío en pesca ${ev.id}:`, delEmptyErr);
+        }
+        continue;
+      }
+
+      // 2. Si es una tarea a eliminar directamente
       const shouldDelete = deletedTaskKeywords.some((kw) => summaryLower.includes(kw));
 
       if (shouldDelete) {
@@ -450,7 +484,7 @@ export async function scheduleFishingDay(
           console.warn(`Error eliminando evento ${ev.id}:`, delErr);
         }
       } else {
-        // Extraer horas y minutos locales del evento original
+        // 3. Tarea real del usuario (ej: "hola")
         let evSH = 0, evSM = 0, evEH = 0, evEM = 0;
         if (evStartStr.includes("T")) {
           const [, tPart] = evStartStr.split("T");
@@ -477,6 +511,48 @@ export async function scheduleFishingDay(
         const newStartIso = createSpainIsoString(targetYear, targetMonth, targetDayNum, evSH, evSM);
         const newEndIso = createSpainIsoString(targetYear, targetMonth, targetDayNum, evEH, evEM);
 
+        // Antes de mover la tarea al día destino, comprobar si en esa franja del día destino hay bloques vacíos
+        try {
+          const targetStartMs = new Date(newStartIso).getTime();
+          const targetEndMs = new Date(newEndIso).getTime();
+          const targetQueryMin = new Date(targetStartMs - 60 * 1000).toISOString();
+          const targetQueryMax = new Date(targetEndMs + 60 * 1000).toISOString();
+
+          const targetEvents = await calendar.events.list({
+            calendarId: "primary",
+            timeMin: targetQueryMin,
+            timeMax: targetQueryMax,
+            singleEvents: true,
+          });
+
+          const targetItems = targetEvents.data.items || [];
+          for (const tEv of targetItems) {
+            if (!tEv.id) continue;
+            const tEvStartIso = tEv.start?.dateTime;
+            const tEvEndIso = tEv.end?.dateTime;
+            if (tEvStartIso && tEvEndIso) {
+              const tEvStartMs = new Date(tEvStartIso).getTime();
+              const tEvEndMs = new Date(tEvEndIso).getTime();
+              const tOverlaps = tEvStartMs < targetEndMs && tEvEndMs > targetStartMs;
+              if (tOverlaps && isEmptyTimeBlock(tEv.summary)) {
+                // Eliminar el bloque vacío en el día destino para que la tarea ocupe la franja sin superponerse
+                try {
+                  await calendar.events.delete({
+                    calendarId: "primary",
+                    eventId: tEv.id,
+                  });
+                  console.log(`Eliminado bloque de time blocking vacío en destino: ${tEv.summary}`);
+                } catch (delTargetErr) {
+                  console.warn("No se pudo eliminar bloque vacío en destino:", delTargetErr);
+                }
+              }
+            }
+          }
+        } catch (targetCheckErr) {
+          console.warn("Error comprobando eventos en día destino:", targetCheckErr);
+        }
+
+        // Mover la tarea al día de destino
         try {
           await calendar.events.patch({
             calendarId: "primary",
