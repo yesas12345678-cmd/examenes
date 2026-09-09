@@ -204,15 +204,18 @@ export async function getUpcomingCalendarEvents(
       let isOccupied = false;
 
       if (overlappingEv) {
-        slotSummary = overlappingEv.summary;
-        if (overlappingEv.isStudy) {
-          isTimeBlock = true;
-        } else if (overlappingEv.isFishing) {
+        if (overlappingEv.isFishing) {
+          slotSummary = overlappingEv.summary;
           isFishing = true;
           isTimeBlock = false;
+        } else if (overlappingEv.isStudy) {
+          slotSummary = overlappingEv.summary;
+          isTimeBlock = true;
         } else {
+          // Tarea previa sustituible (ej: "pc y tareas", "abuelos"): es libre para seleccionar
+          slotSummary = defaultSummary;
+          isTimeBlock = true;
           isOccupied = true;
-          isTimeBlock = false;
         }
       }
 
