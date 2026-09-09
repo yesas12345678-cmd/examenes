@@ -48,14 +48,6 @@ export default function FishingForm({ onSuccess, onError, onRefreshCalendar }: F
 
   const isValidWeekend = selectedDateObj ? isSaturday(selectedDateObj) || isSunday(selectedDateObj) : false;
 
-  // Presets de Horario
-  const presets = [
-    { label: "8:00 - 13:00 (5h)", start: "08:00", end: "13:00" },
-    { label: "7:00 - 14:00 (7h)", start: "07:00", end: "14:00" },
-    { label: "9:00 - 14:00 (5h)", start: "09:00", end: "14:00" },
-    { label: "10:00 - 15:00 (5h)", start: "10:00", end: "15:00" },
-  ];
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -191,23 +183,6 @@ export default function FishingForm({ onSuccess, onError, onRefreshCalendar }: F
                 className="w-full bg-zinc-950 border border-zinc-800 focus:border-rose-400 text-white rounded-xl p-3 text-xs font-bold focus:outline-none"
               />
             </div>
-          </div>
-
-          {/* Presets Rápidos */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {presets.map((p, idx) => (
-              <button
-                type="button"
-                key={idx}
-                onClick={() => {
-                  setStartTime(p.start);
-                  setEndTime(p.end);
-                }}
-                className="px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-bold transition-all hover:border-rose-400"
-              >
-                {p.label}
-              </button>
-            ))}
           </div>
         </div>
 
