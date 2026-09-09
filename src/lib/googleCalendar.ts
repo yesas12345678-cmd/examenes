@@ -491,12 +491,11 @@ export async function scheduleFishingDay(
     }
   }
 
-  // Crear Evento Timed en Rojo (colorId: "11") con notificación al inicio
+  // Crear Evento Timed con el color por defecto del calendario y notificación al inicio
   const timedEvent = await calendar.events.insert({
     calendarId: "primary",
     requestBody: {
       summary: "Jornada de Pesca",
-      colorId: "11",
       start: { dateTime: fishingStartIso },
       end: { dateTime: fishingEndIso },
       reminders: {
@@ -506,7 +505,7 @@ export async function scheduleFishingDay(
     },
   });
 
-  // Crear Evento All-Day en Rojo (colorId: "11") "jornada de pesca Hstart-Hend"
+  // Crear Evento All-Day con el color por defecto del calendario "jornada de pesca Hstart-Hend"
   const startHInt = parseInt(startH.toString(), 10);
   const endHInt = parseInt(endH.toString(), 10);
   const allDaySummary = `jornada de pesca ${startHInt}-${endHInt}`;
@@ -515,7 +514,6 @@ export async function scheduleFishingDay(
     calendarId: "primary",
     requestBody: {
       summary: allDaySummary,
-      colorId: "11",
       start: { date: dateStr },
       end: { date: dateStr },
       reminders: {
