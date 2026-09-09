@@ -15,6 +15,8 @@ export interface CalendarSlot {
   isTimeBlock: boolean; // Evento vacío o reservado para time blocking
   isVirtual?: boolean;  // Bloque por defecto no creado aún en Google Calendar
   isDefaultNightSlot?: boolean; // Bloque predeterminado de noche (21:00-23:00)
+  isFishing?: boolean;  // Evento de Jornada de Pesca
+  isOccupied?: boolean; // Tarea u ocupación en esa franja
 }
 
 export interface SyncPayload {

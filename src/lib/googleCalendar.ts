@@ -117,34 +117,24 @@ export async function getUpcomingCalendarEvents(
 
   const items = response.data.items || [];
 
-  // Mapear eventos de estudio ya agendados para preservar su nombre ("Estudio: Examen X")
-  const existingStudyEvents: { start: string; end: string; summary: string }[] = [];
+  // Mapear eventos existentes en la cuenta para detectar horas ocupadas o jornadas de pesca
+  const existingEventsList: { startMs: number; endMs: number; summary: string; isStudy: boolean; isFishing: boolean }[] = [];
   for (const item of items) {
     const summary = item.summary ? item.summary.trim() : "";
-    if (summary.startsWith("Estudio:")) {
-      let startStr = item.start?.dateTime || item.start?.date || "";
-      let endStr = item.end?.dateTime || item.end?.date || "";
-      if (startStr.includes("T")) {
-        const dStart = new Date(startStr);
-        startStr = createNaiveLocalIsoString(
-          dStart.getFullYear(),
-          dStart.getMonth(),
-          dStart.getDate(),
-          dStart.getHours(),
-          dStart.getMinutes()
-        );
-      }
-      if (endStr.includes("T")) {
-        const dEnd = new Date(endStr);
-        endStr = createNaiveLocalIsoString(
-          dEnd.getFullYear(),
-          dEnd.getMonth(),
-          dEnd.getDate(),
-          dEnd.getHours(),
-          dEnd.getMinutes()
-        );
-      }
-      existingStudyEvents.push({ start: startStr, end: endStr, summary });
+    const evStartStr = item.start?.dateTime;
+    const evEndStr = item.end?.dateTime;
+
+    if (evStartStr && evEndStr) {
+      const startMs = new Date(evStartStr).getTime();
+      const endMs = new Date(evEndStr).getTime();
+      const summaryLower = summary.toLowerCase();
+      existingEventsList.push({
+        startMs,
+        endMs,
+        summary,
+        isStudy: summary.startsWith("Estudio:"),
+        isFishing: summaryLower.includes("jornada de pesca"),
+      });
     }
   }
 
@@ -161,8 +151,8 @@ export async function getUpcomingCalendarEvents(
     // Lista de rangos de hora estrictamente permitidos según la especificación del usuario
     const allowedHourRanges: { startH: number; startM: number; endH: number; endM: number; isNight?: boolean }[] = [];
 
-    // 1. Bloques Nocturnos (Domingo, Lunes, Martes, Miércoles, Jueves)
-    if ([0, 1, 2, 3, 4].includes(dayOfWeek)) {
+    // 1. Bloques Nocturnos (Lunes, Martes, Miércoles, Jueves)
+    if ([1, 2, 3, 4].includes(dayOfWeek)) {
       allowedHourRanges.push({ startH: 21, startM: 10, endH: 22, endM: 0, isNight: true });
       allowedHourRanges.push({ startH: 22, startM: 0, endH: 23, endM: 0, isNight: true });
     }
@@ -184,12 +174,6 @@ export async function getUpcomingCalendarEvents(
       allowedHourRanges.push({ startH: 17, startM: 0, endH: 18, endM: 0 });
     }
 
-    // 4. Solo Domingo: 18 a 19 y 19 a 20
-    if (dayOfWeek === 0) {
-      allowedHourRanges.push({ startH: 18, startM: 0, endH: 19, endM: 0 });
-      allowedHourRanges.push({ startH: 19, startM: 0, endH: 20, endM: 0 });
-    }
-
     // Ordenar cronológicamente dentro del día
     allowedHourRanges.sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM));
 
@@ -202,20 +186,46 @@ export async function getUpcomingCalendarEvents(
       const padEH = String(range.endH).padStart(2, "0");
       const padEM = String(range.endM).padStart(2, "0");
 
-      const existingStudy = existingStudyEvents.find((e) => e.start === slotStartNaive);
+      const slotStartMs = new Date(createSpainIsoString(year, month, dateNum, range.startH, range.startM)).getTime();
+      const slotEndMs = new Date(createSpainIsoString(year, month, dateNum, range.endH, range.endM)).getTime();
+
+      // Buscar si algún evento en la cuenta se solapa con este bloque
+      const overlappingEv = existingEventsList.find(
+        (ev) => ev.startMs < slotEndMs && ev.endMs > slotStartMs
+      );
 
       const defaultSummary = range.isNight
         ? `Bloque Noche (${padSH}:${padSM} - ${padEH}:${padEM})`
         : `Bloque Libre (${padSH}:${padSM} - ${padEH}:${padEM})`;
 
+      let slotSummary = defaultSummary;
+      let isTimeBlock = true;
+      let isFishing = false;
+      let isOccupied = false;
+
+      if (overlappingEv) {
+        slotSummary = overlappingEv.summary;
+        if (overlappingEv.isStudy) {
+          isTimeBlock = true;
+        } else if (overlappingEv.isFishing) {
+          isFishing = true;
+          isTimeBlock = false;
+        } else {
+          isOccupied = true;
+          isTimeBlock = false;
+        }
+      }
+
       resultSlots.push({
         id: `virtual_${padSH}${padSM}_${dateStr}`,
-        summary: existingStudy ? existingStudy.summary : defaultSummary,
+        summary: slotSummary,
         start: slotStartNaive,
         end: slotEndNaive,
-        isTimeBlock: true,
+        isTimeBlock,
         isVirtual: true,
         isDefaultNightSlot: range.isNight || false,
+        isFishing,
+        isOccupied,
       });
     }
   }
@@ -261,23 +271,6 @@ export async function syncSlotInstance(
     }
   }
 
-  // Extraer día de la semana y horas/minutos locales para comprobar si es sustituible
-  let dayOfWeek = -1;
-  let hours = -1;
-  let minutes = -1;
-
-  if (startIso) {
-    const [dPart, tPart] = startIso.split("T");
-    if (dPart && tPart) {
-      const [year, month, day] = dPart.split("-").map(Number);
-      const [h, m] = tPart.split(":").map(Number);
-      const d = new Date(year, month - 1, day);
-      dayOfWeek = d.getDay();
-      hours = h;
-      minutes = m;
-    }
-  }
-
   // Convertir strings Naive Local a ISO de España con offset (+02:00)
   if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
     const [dPart, tPart] = startIso.split("T");
@@ -299,7 +292,6 @@ export async function syncSlotInstance(
       const targetWindowStart = new Date(startIso).getTime();
       const targetWindowEnd = new Date(endIso).getTime();
 
-      // Ampliar 1 minuto la consulta a la API para capturar eventos que tocan los bordes
       const queryTimeMin = new Date(targetWindowStart - 60 * 1000).toISOString();
       const queryTimeMax = new Date(targetWindowEnd + 60 * 1000).toISOString();
 
@@ -322,7 +314,6 @@ export async function syncSlotInstance(
         const evStartMs = new Date(evStartIso).getTime();
         const evEndMs = new Date(evEndIso).getTime();
 
-        // Detectar cualquier solapamiento: evStart < targetWindowEnd && evEnd > targetWindowStart
         const overlaps = evStartMs < targetWindowEnd && evEndMs > targetWindowStart;
 
         if (overlaps) {
@@ -363,3 +354,183 @@ export async function syncSlotInstance(
   return response.data;
 }
 
+/**
+ * Programar Jornada de Pesca para Sábados o Domingos.
+ * - Si es Sábado: Las tareas en esa franja se posponen al Domingo (mismo horario).
+ * - Si es Domingo: Las tareas en esa franja se atrasan al Sábado (mismo horario).
+ * - Tareas a eliminar automáticamente: "getupp", "artefactos a mano", "Estudio: b2" (case-insensitive).
+ * - Crea evento Timed en Rojo (colorId: '11') con notificación al inicio.
+ * - Crea evento All-Day en Rojo (colorId: '11') "jornada de pesca Hstart-Hend".
+ */
+export async function scheduleFishingDay(
+  accessToken: string,
+  dateStr: string, // YYYY-MM-DD
+  startTime: string, // HH:mm (ej: "08:00")
+  endTime: string // HH:mm (ej: "13:00")
+) {
+  const calendar = getGoogleCalendarClient(accessToken);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [endH, endM] = endTime.split(":").map(Number);
+
+  const fishingDate = new Date(year, month - 1, day);
+  const dayOfWeek = fishingDate.getDay(); // 6 = Sábado, 0 = Domingo
+
+  if (dayOfWeek !== 6 && dayOfWeek !== 0) {
+    throw new Error("La jornada de pesca solo se puede programar en Sábado o Domingo.");
+  }
+
+  // Determinar el día de destino para posponer / atrasar
+  const targetDate = new Date(fishingDate);
+  if (dayOfWeek === 6) {
+    targetDate.setDate(targetDate.getDate() + 1); // Sábado -> Domingo
+  } else {
+    targetDate.setDate(targetDate.getDate() - 1); // Domingo -> Sábado
+  }
+
+  const targetYear = targetDate.getFullYear();
+  const targetMonth = targetDate.getMonth();
+  const targetDayNum = targetDate.getDate();
+
+  // Strings ISO de inicio y fin para la pesca
+  const fishingStartIso = createSpainIsoString(year, month - 1, day, startH, startM);
+  const fishingEndIso = createSpainIsoString(year, month - 1, day, endH, endM);
+
+  const fishingStartMs = new Date(fishingStartIso).getTime();
+  const fishingEndMs = new Date(fishingEndIso).getTime();
+
+  // Consultar eventos en la franja
+  const queryMin = new Date(fishingStartMs - 60 * 1000).toISOString();
+  const queryMax = new Date(fishingEndMs + 60 * 1000).toISOString();
+
+  const listResponse = await calendar.events.list({
+    calendarId: "primary",
+    timeMin: queryMin,
+    timeMax: queryMax,
+    singleEvents: true,
+  });
+
+  const items = listResponse.data.items || [];
+
+  const deletedTaskKeywords = ["getupp", "artefactos a mano", "estudio: b2"];
+
+  const movedEventsList: string[] = [];
+  const deletedEventsList: string[] = [];
+
+  for (const ev of items) {
+    if (!ev.id) continue;
+    const summaryTrim = (ev.summary || "").trim();
+    if (summaryTrim.toLowerCase().includes("jornada de pesca")) continue;
+
+    const evStartStr = ev.start?.dateTime;
+    const evEndStr = ev.end?.dateTime;
+
+    if (evStartStr && evEndStr) {
+      const evStartMs = new Date(evStartStr).getTime();
+      const evEndMs = new Date(evEndStr).getTime();
+
+      const overlaps = evStartMs < fishingEndMs && evEndMs > fishingStartMs;
+      if (!overlaps) continue;
+
+      const summaryLower = summaryTrim.toLowerCase();
+
+      const shouldDelete = deletedTaskKeywords.some((kw) => summaryLower.includes(kw));
+
+      if (shouldDelete) {
+        try {
+          await calendar.events.delete({
+            calendarId: "primary",
+            eventId: ev.id,
+          });
+          deletedEventsList.push(summaryTrim || "Tarea eliminada");
+        } catch (delErr) {
+          console.warn(`Error eliminando evento ${ev.id}:`, delErr);
+        }
+      } else {
+        // Extraer horas y minutos locales del evento original
+        let evSH = 0, evSM = 0, evEH = 0, evEM = 0;
+        if (evStartStr.includes("T")) {
+          const [, tPart] = evStartStr.split("T");
+          const [h, m] = tPart.split(":").map(Number);
+          evSH = h;
+          evSM = m;
+        } else {
+          const d = new Date(evStartStr);
+          evSH = d.getHours();
+          evSM = d.getMinutes();
+        }
+
+        if (evEndStr.includes("T")) {
+          const [, tPart] = evEndStr.split("T");
+          const [h, m] = tPart.split(":").map(Number);
+          evEH = h;
+          evEM = m;
+        } else {
+          const d = new Date(evEndStr);
+          evEH = d.getHours();
+          evEM = d.getMinutes();
+        }
+
+        const newStartIso = createSpainIsoString(targetYear, targetMonth, targetDayNum, evSH, evSM);
+        const newEndIso = createSpainIsoString(targetYear, targetMonth, targetDayNum, evEH, evEM);
+
+        try {
+          await calendar.events.patch({
+            calendarId: "primary",
+            eventId: ev.id,
+            requestBody: {
+              start: { dateTime: newStartIso },
+              end: { dateTime: newEndIso },
+            },
+          });
+          movedEventsList.push(summaryTrim || "Tarea movida");
+        } catch (patchErr) {
+          console.warn(`Error moviendo evento ${ev.id}:`, patchErr);
+        }
+      }
+    }
+  }
+
+  // Crear Evento Timed en Rojo (colorId: "11") con notificación al inicio
+  const timedEvent = await calendar.events.insert({
+    calendarId: "primary",
+    requestBody: {
+      summary: "Jornada de Pesca",
+      colorId: "11",
+      start: { dateTime: fishingStartIso },
+      end: { dateTime: fishingEndIso },
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: "popup", minutes: 0 }],
+      },
+    },
+  });
+
+  // Crear Evento All-Day en Rojo (colorId: "11") "jornada de pesca Hstart-Hend"
+  const startHInt = parseInt(startH.toString(), 10);
+  const endHInt = parseInt(endH.toString(), 10);
+  const allDaySummary = `jornada de pesca ${startHInt}-${endHInt}`;
+
+  const allDayEvent = await calendar.events.insert({
+    calendarId: "primary",
+    requestBody: {
+      summary: allDaySummary,
+      colorId: "11",
+      start: { date: dateStr },
+      end: { date: dateStr },
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: "popup", minutes: 0 }],
+      },
+    },
+  });
+
+  return {
+    timedEvent: timedEvent.data,
+    allDayEvent: allDayEvent.data,
+    movedCount: movedEventsList.length,
+    deletedCount: deletedEventsList.length,
+    movedEvents: movedEventsList,
+    deletedEvents: deletedEventsList,
+  };
+}

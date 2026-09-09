@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarSlot, EffortLevel } from "@/types";
-import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Moon, Trophy } from "lucide-react";
+import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Moon, Trophy, Fish, Lock } from "lucide-react";
 import { format, parseISO, differenceInMinutes } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -31,8 +31,8 @@ export default function CalendarViewer({
   const maxSlots = requiredSlotsMap[effortLevel];
   const maxSessions = maxSlots / 2;
 
-  // Filtrar eventos para mostrar únicamente bloques libres (incluyendo bloques nocturnos)
-  const displayedEvents = events.filter((e) => e.isTimeBlock || e.isDefaultNightSlot);
+  // Todos los eventos para el desglose diario
+  const displayedEvents = events;
 
   // Agrupar eventos por día para renderizado ordenado
   const groupedEvents: Record<string, CalendarSlot[]> = {};
@@ -119,7 +119,7 @@ export default function CalendarViewer({
           <div>
             <h2 className="text-base font-black text-yellow-400 uppercase tracking-wider">Visor de Time Blocking</h2>
             <p className="text-xs text-zinc-400 font-medium">
-              Bloques libres disponibles (incluyendo noches de 21:10-23:00 en L, M, X, J y D)
+              Bloques libres disponibles (incluyendo noches de 21:10-23:00 en L, M, X, J)
             </p>
           </div>
         </div>
@@ -189,6 +189,50 @@ export default function CalendarViewer({
                     const startTime = format(parseISO(slot.start), "HH:mm");
                     const endTime = format(parseISO(slot.end), "HH:mm");
 
+                    if (slot.isFishing) {
+                      return (
+                        <div
+                          key={slot.id}
+                          className="p-3.5 rounded-2xl border bg-rose-950/40 border-rose-500/50 text-rose-200 flex items-center justify-between shadow-[0_0_15px_rgba(244,63,94,0.2)]"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-xs font-black text-rose-400">
+                              <Fish className="w-3.5 h-3.5 text-rose-400" />
+                              <span className="tracking-wide">{startTime} - {endTime}</span>
+                              <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-black uppercase tracking-wider border border-rose-500/40 flex items-center gap-1 shadow-[0_0_8px_rgba(244,63,94,0.3)]">
+                                Pesca 🎣
+                              </span>
+                            </div>
+                            <p className="text-xs font-black text-rose-200">
+                              {slot.summary}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (slot.isOccupied) {
+                      return (
+                        <div
+                          key={slot.id}
+                          className="p-3.5 rounded-2xl border bg-zinc-950/70 border-zinc-800 text-zinc-400 flex items-center justify-between opacity-80"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-xs font-bold text-zinc-400">
+                              <Lock className="w-3.5 h-3.5 text-zinc-500" />
+                              <span className="tracking-wide">{startTime} - {endTime}</span>
+                              <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
+                                Tarea Movida/Ocupado
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-zinc-300 truncate">
+                              {slot.summary}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <button
                         key={slot.id}
@@ -239,6 +283,3 @@ export default function CalendarViewer({
     </div>
   );
 }
-
-
-
