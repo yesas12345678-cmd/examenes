@@ -213,9 +213,6 @@ export async function getUpcomingCalendarEvents(
   accessToken: string,
   daysAhead: number = 14
 ): Promise<CalendarSlot[]> {
-  // Asegurar que el evento 'pc o pesca' de 01:00 a 01:30 esté presente en los sábados
-  await ensureSaturdayPcPescaSlot(accessToken, daysAhead);
-
   const calendar = getGoogleCalendarClient(accessToken);
   const now = new Date();
   const timeMin = now.toISOString();
@@ -506,14 +503,10 @@ export async function syncSlotGroupInstance(
     requestBody: eventRequestBody,
   });
 
-  // Asegurar que 'pc o pesca' exista de 01:00 a 01:30 en el sábado correspondiente
+  // Asegurar que 'pc o pesca' exista de 01:00 a 01:30 solo en el sábado correspondiente
   if (startIso) {
-    const [dPart] = startIso.split("T");
-    const [year, month, day] = dPart.split("-").map(Number);
-    const targetDate = new Date(year, month - 1, day);
-    await createOrEnsurePcPescaForDate(accessToken, targetDate);
+    await createOrEnsurePcPescaForDate(accessToken, startIso);
   }
-  await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return response.data;
 }
@@ -776,9 +769,8 @@ export async function scheduleFishingDay(
     },
   });
 
-  // Asegurar que 'pc o pesca' se mantenga de 01:00 a 01:30 en los sábados
+  // Asegurar que 'pc o pesca' se mantenga de 01:00 a 01:30 únicamente en la fecha de pesca si es sábado
   await createOrEnsurePcPescaForDate(accessToken, fishingDate);
-  await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return {
     timedEvent: timedEvent.data,
