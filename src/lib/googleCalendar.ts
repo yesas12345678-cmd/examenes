@@ -93,79 +93,115 @@ export async function createAllDayExamEvent(accessToken: string, exam: ExamData)
 }
 
 /**
- * Garantiza que en los sábados exista el evento "pc o pesca" en la franja de 01:00 a 01:30.
+ * Comprueba si la descripción/resumen corresponde a 'pc o pesca' (excluyendo 'jornada de pesca').
+ */
+function isPcPescaSummary(summary: string | undefined | null): boolean {
+  if (!summary) return false;
+  const lower = summary.toLowerCase().trim();
+  if (lower.includes("jornada de pesca")) return false; // NO coincidir con Jornadas de pesca
+  return lower.includes("pc o pesca") || lower === "pc" || lower === "pesca" || lower.includes("pc/pesca");
+}
+
+/**
+ * Garantiza que en la fecha dada (si es Sábado en tiempo de España) exista el evento "pc o pesca" de 01:00 a 01:30.
+ */
+export async function createOrEnsurePcPescaForDate(accessToken: string, targetInput: Date | string) {
+  let dateObj: Date;
+  if (typeof targetInput === "string") {
+    if (!targetInput.includes("+") && !targetInput.includes("Z")) {
+      const [dPart] = targetInput.split("T");
+      const [y, m, d] = dPart.split("-").map(Number);
+      dateObj = new Date(y, m - 1, d);
+    } else {
+      dateObj = new Date(targetInput);
+    }
+  } else {
+    dateObj = targetInput;
+  }
+
+  // Obtener fecha en zona horaria Europe/Madrid
+  const madridStr = dateObj.toLocaleString("en-US", { timeZone: "Europe/Madrid" });
+  const madridDate = new Date(madridStr);
+
+  if (madridDate.getDay() !== 6) return; // Solo sábados
+
+  const year = madridDate.getFullYear();
+  const month = madridDate.getMonth();
+  const dateNum = madridDate.getDate();
+
+  const start100Iso = createSpainIsoString(year, month, dateNum, 1, 0);
+  const end130Iso = createSpainIsoString(year, month, dateNum, 1, 30);
+  const queryMin = createSpainIsoString(year, month, dateNum, 0, 50);
+  const queryMax = createSpainIsoString(year, month, dateNum, 2, 40);
+
+  const calendar = getGoogleCalendarClient(accessToken);
+
+  try {
+    const response = await calendar.events.list({
+      calendarId: "primary",
+      timeMin: queryMin,
+      timeMax: queryMax,
+      singleEvents: true,
+    });
+
+    const items = response.data.items || [];
+
+    // Comprobar si ya existe un evento "pc o pesca" de 01:00 a 01:30
+    const hasCorrectSlot = items.some((item) => {
+      if (!isPcPescaSummary(item.summary)) return false;
+      if (!item.start?.dateTime || !item.end?.dateTime) return false;
+      const dS = new Date(item.start.dateTime);
+      const dE = new Date(item.end.dateTime);
+      const sM = new Date(dS.toLocaleString("en-US", { timeZone: "Europe/Madrid" }));
+      const eM = new Date(dE.toLocaleString("en-US", { timeZone: "Europe/Madrid" }));
+      return sM.getHours() === 1 && sM.getMinutes() === 0 && eM.getHours() === 1 && eM.getMinutes() === 30;
+    });
+
+    if (!hasCorrectSlot) {
+      const existingPcPesca = items.find((item) => isPcPescaSummary(item.summary));
+
+      if (existingPcPesca && existingPcPesca.id) {
+        await calendar.events.patch({
+          calendarId: "primary",
+          eventId: existingPcPesca.id,
+          requestBody: {
+            summary: "pc o pesca",
+            start: { dateTime: start100Iso },
+            end: { dateTime: end130Iso },
+          },
+        });
+        console.log(`Parcheado evento 'pc o pesca' a 01:00-01:30 en ${year}-${month + 1}-${dateNum}`);
+      } else {
+        await calendar.events.insert({
+          calendarId: "primary",
+          requestBody: {
+            summary: "pc o pesca",
+            start: { dateTime: start100Iso },
+            end: { dateTime: end130Iso },
+          },
+        });
+        console.log(`Creado evento 'pc o pesca' (01:00-01:30) en ${year}-${month + 1}-${dateNum}`);
+      }
+    }
+  } catch (err) {
+    console.warn("Fallo creando/asegurando pc o pesca:", err);
+  }
+}
+
+/**
+ * Garantiza que en los sábados pasados y futuros exista el evento "pc o pesca" de 01:00 a 01:30.
  */
 export async function ensureSaturdayPcPescaSlot(
   accessToken: string,
   daysAhead: number = 14
 ) {
-  const calendar = getGoogleCalendarClient(accessToken);
   const now = new Date();
-
-  for (let d = 0; d < daysAhead; d++) {
+  for (let d = -7; d < daysAhead; d++) {
     const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-    if (dayDate.getDay() !== 6) continue; // Solo sábados
-
-    const year = dayDate.getFullYear();
-    const month = dayDate.getMonth();
-    const dateNum = dayDate.getDate();
-
-    const start100Iso = createSpainIsoString(year, month, dateNum, 1, 0);
-    const end130Iso = createSpainIsoString(year, month, dateNum, 1, 30);
-    const end230Iso = createSpainIsoString(year, month, dateNum, 2, 30);
-
-    const queryMin = new Date(new Date(start100Iso).getTime() - 60 * 1000).toISOString();
-    const queryMax = new Date(new Date(end230Iso).getTime() + 60 * 1000).toISOString();
-
-    try {
-      const response = await calendar.events.list({
-        calendarId: "primary",
-        timeMin: queryMin,
-        timeMax: queryMax,
-        singleEvents: true,
-      });
-
-      const items = response.data.items || [];
-
-      // Comprobar si ya existe un evento "pc" o "pesca" exactamente de 01:00 a 01:30
-      const has100To130PcPesca = items.some((item) => {
-        const summaryLower = (item.summary || "").toLowerCase();
-        if (!summaryLower.includes("pc") && !summaryLower.includes("pesca")) return false;
-        if (!item.start?.dateTime || !item.end?.dateTime) return false;
-        const dS = new Date(item.start.dateTime);
-        const dE = new Date(item.end.dateTime);
-        return dS.getHours() === 1 && dS.getMinutes() === 0 && dE.getHours() === 1 && dE.getMinutes() === 30;
-      });
-
-      if (!has100To130PcPesca) {
-        const longPcPesca = items.find((item) => {
-          const summaryLower = (item.summary || "").toLowerCase();
-          return summaryLower.includes("pc") || summaryLower.includes("pesca");
-        });
-
-        if (longPcPesca && longPcPesca.id) {
-          await calendar.events.patch({
-            calendarId: "primary",
-            eventId: longPcPesca.id,
-            requestBody: {
-              start: { dateTime: start100Iso },
-              end: { dateTime: end130Iso },
-            },
-          });
-        } else {
-          // Recrear el evento "pc o pesca" de 01:00 a 01:30 en Google Calendar
-          await calendar.events.insert({
-            calendarId: "primary",
-            requestBody: {
-              summary: "pc o pesca",
-              start: { dateTime: start100Iso },
-              end: { dateTime: end130Iso },
-            },
-          });
-        }
-      }
-    } catch (err) {
-      console.warn("Fallo verificando/recreando pc o pesca en sábado:", err);
+    const madridStr = dayDate.toLocaleString("en-US", { timeZone: "Europe/Madrid" });
+    const madridDate = new Date(madridStr);
+    if (madridDate.getDay() === 6) {
+      await createOrEnsurePcPescaForDate(accessToken, dayDate);
     }
   }
 }
@@ -406,7 +442,6 @@ export async function syncSlotGroupInstance(
   }
 
   // Limpieza previa de la franja unificada: Eliminar cualquier evento no-estudio previo en la ventana
-  // (salvo 'pc o pesca' de 01:00 a 01:30 si la franja empieza a las 01:30)
   if (startIso && endIso) {
     try {
       const targetWindowStart = new Date(startIso).getTime();
@@ -471,7 +506,13 @@ export async function syncSlotGroupInstance(
     requestBody: eventRequestBody,
   });
 
-  // Asegurar que el evento 'pc o pesca' permanezca en la franja 01:00 - 01:30
+  // Asegurar que 'pc o pesca' exista de 01:00 a 01:30 en el sábado correspondiente
+  if (startIso) {
+    const [dPart] = startIso.split("T");
+    const [year, month, day] = dPart.split("-").map(Number);
+    const targetDate = new Date(year, month - 1, day);
+    await createOrEnsurePcPescaForDate(accessToken, targetDate);
+  }
   await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return response.data;
@@ -736,6 +777,7 @@ export async function scheduleFishingDay(
   });
 
   // Asegurar que 'pc o pesca' se mantenga de 01:00 a 01:30 en los sábados
+  await createOrEnsurePcPescaForDate(accessToken, fishingDate);
   await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return {
