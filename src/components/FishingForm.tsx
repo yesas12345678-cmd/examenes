@@ -203,7 +203,7 @@ export default function FishingForm({ onSuccess, onError, onRefreshCalendar }: F
             <li className="flex items-start gap-1.5">
               <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
               <span>
-                <strong>Eliminación directa</strong>: Tareas con nombre <code className="bg-black/60 px-1 py-0.5 rounded text-rose-300">getupp</code>, <code className="bg-black/60 px-1 py-0.5 rounded text-rose-300">artefactos a mano</code> o <code className="bg-black/60 px-1 py-0.5 rounded text-rose-300">Estudio: b2</code> se eliminan.
+                <strong>Eliminación directa</strong>: Tareas con nombre <code className="bg-black/60 px-1 py-0.5 rounded text-rose-300">getupp</code> o <code className="bg-black/60 px-1 py-0.5 rounded text-rose-300">artefactos a mano</code> se eliminan.
               </span>
             </li>
             <li className="flex items-start gap-1.5">

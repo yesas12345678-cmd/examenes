@@ -522,7 +522,7 @@ export async function scheduleFishingDay(
 
   const items = listResponse.data.items || [];
 
-  const deletedTaskKeywords = ["getupp", "artefactos a mano", "estudio: b2"];
+  const deletedTaskKeywords = ["getupp", "artefactos a mano"];
 
   const movedEventsList: string[] = [];
   const deletedEventsList: string[] = [];

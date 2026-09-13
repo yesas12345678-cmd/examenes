@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
     let message = `🎣 ¡Jornada de pesca programada para el ${dayName} ${date} (${startTime} - ${endTime})!`;
     if (result.movedCount > 0 || result.deletedCount > 0) {
-      message += ` Tareas ajustadas: ${result.movedCount} pasada(s) al ${targetDayName}, ${result.deletedCount} eliminada(s) (getupp/artefactos a mano/Estudio: b2).`;
+      message += ` Tareas ajustadas: ${result.movedCount} pasada(s) al ${targetDayName}, ${result.deletedCount} eliminada(s) (getupp/artefactos a mano).`;
     }
 
     return NextResponse.json({
