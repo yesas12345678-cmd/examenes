@@ -157,13 +157,18 @@ export async function getUpcomingCalendarEvents(
       allowedHourRanges.push({ startH: 22, startM: 0, endH: 23, endM: 0, isNight: true });
     }
 
-    // 2. Martes y Jueves: 16:00 - 17:00 y 17:00 - 18:00
-    if ([2, 4].includes(dayOfWeek)) {
+    // 2. Martes: Solo 16:00 - 17:00 (se eliminó 17:00 - 18:00)
+    if (dayOfWeek === 2) {
+      allowedHourRanges.push({ startH: 16, startM: 0, endH: 17, endM: 0 });
+    }
+
+    // 3. Jueves: 16:00 - 17:00 y 17:00 - 18:00
+    if (dayOfWeek === 4) {
       allowedHourRanges.push({ startH: 16, startM: 0, endH: 17, endM: 0 });
       allowedHourRanges.push({ startH: 17, startM: 0, endH: 18, endM: 0 });
     }
 
-    // 3. Sábado y Domingo: 10 a 15 (10-11, 11-12, 12-13, 13-14, 14-15) y 16 a 18 (16-17, 17-18)
+    // 4. Sábado y Domingo: 10 a 15 (10-11, 11-12, 12-13, 13-14, 14-15) y 16 a 18 (16-17, 17-18)
     if ([6, 0].includes(dayOfWeek)) {
       allowedHourRanges.push({ startH: 10, startM: 0, endH: 11, endM: 0 });
       allowedHourRanges.push({ startH: 11, startM: 0, endH: 12, endM: 0 });
@@ -172,6 +177,51 @@ export async function getUpcomingCalendarEvents(
       allowedHourRanges.push({ startH: 14, startM: 0, endH: 15, endM: 0 });
       allowedHourRanges.push({ startH: 16, startM: 0, endH: 17, endM: 0 });
       allowedHourRanges.push({ startH: 17, startM: 0, endH: 18, endM: 0 });
+    }
+
+    // 5. Solo Sábado Madrugada: 01:30 a 02:00
+    if (dayOfWeek === 6) {
+      allowedHourRanges.push({ startH: 1, startM: 30, endH: 2, endM: 0, isNight: true });
+
+      // Truncar evento "pc", "pesca", "pc y tareas" que ocupe de 1:00 a 2:00 para dejar libre de 1:30 a 2:00
+      for (const item of items) {
+        if (!item.id) continue;
+        const sLower = (item.summary || "").toLowerCase().trim();
+        if (sLower.includes("pc") || sLower.includes("pesca")) {
+          const evStartStr = item.start?.dateTime;
+          const evEndStr = item.end?.dateTime;
+          if (evStartStr && evEndStr) {
+            const dEvStart = new Date(evStartStr);
+            const dEvEnd = new Date(evEndStr);
+            if (
+              dEvStart.getFullYear() === year &&
+              dEvStart.getMonth() === month &&
+              dEvStart.getDate() === dateNum
+            ) {
+              if (
+                dEvStart.getHours() === 1 &&
+                dEvStart.getMinutes() === 0 &&
+                dEvEnd.getHours() === 2 &&
+                dEvEnd.getMinutes() === 0
+              ) {
+                try {
+                  const newEndIso = createSpainIsoString(year, month, dateNum, 1, 30);
+                  await calendar.events.patch({
+                    calendarId: "primary",
+                    eventId: item.id,
+                    requestBody: {
+                      end: { dateTime: newEndIso },
+                    },
+                  });
+                  console.log(`Evento ${item.summary} recortado a 1:00-1:30 en Sábado ${dateStr}`);
+                } catch (patchErr) {
+                  console.warn("Error recortando evento pc/pesca 1:00-2:00:", patchErr);
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // Ordenar cronológicamente dentro del día
@@ -236,45 +286,70 @@ export async function getUpcomingCalendarEvents(
   return resultSlots;
 }
 
+export interface MergedSlotGroup {
+  startIso: string;
+  endIso: string;
+  slotIds: string[];
+}
+
 /**
- * Procesa la sincronización de un bloque de estudio.
- * - Elimina cualquier evento previo en Google Calendar dentro de la franja seleccionada (sustitución de franja).
- * - Aplica el color Azul (colorId: "9") y recordatorio en el minuto 0.
+ * Agrupa slots consecutivos del mismo día para sincronizarlos en un único evento unificado en Google Calendar.
  */
-export async function syncSlotInstance(
+export function groupConsecutiveSlots(slots: CalendarSlot[]): MergedSlotGroup[] {
+  if (slots.length === 0) return [];
+
+  // Ordenar por hora de inicio
+  const sorted = [...slots].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+  );
+
+  const groups: MergedSlotGroup[] = [];
+  let currentGroup: MergedSlotGroup = {
+    startIso: sorted[0].start,
+    endIso: sorted[0].end,
+    slotIds: [sorted[0].id],
+  };
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prevEndMs = new Date(currentGroup.endIso).getTime();
+    const nextStartMs = new Date(sorted[i].start).getTime();
+
+    const diffMinutes = Math.abs((nextStartMs - prevEndMs) / (1000 * 60));
+    const sameDay =
+      new Date(currentGroup.startIso).toDateString() ===
+      new Date(sorted[i].start).toDateString();
+
+    if (sameDay && diffMinutes <= 5) {
+      // Extender el grupo actual
+      currentGroup.endIso = sorted[i].end;
+      currentGroup.slotIds.push(sorted[i].id);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = {
+        startIso: sorted[i].start,
+        endIso: sorted[i].end,
+        slotIds: [sorted[i].id],
+      };
+    }
+  }
+  groups.push(currentGroup);
+  return groups;
+}
+
+/**
+ * Procesa la sincronización de un grupo de bloques de estudio continuos en un solo evento en Google Calendar.
+ */
+export async function syncSlotGroupInstance(
   accessToken: string,
-  slotId: string,
-  examName: string,
-  allSlots: CalendarSlot[] = []
+  group: MergedSlotGroup,
+  examName: string
 ): Promise<any> {
   const calendar = getGoogleCalendarClient(accessToken);
   const newSummary = `Estudio: ${examName}`;
 
-  const targetSlot = allSlots.find((s) => s.id === slotId);
+  let startIso = group.startIso;
+  let endIso = group.endIso;
 
-  let startIso = targetSlot?.start;
-  let endIso = targetSlot?.end;
-
-  // Fallback si no está el targetSlot en allSlots
-  if (!startIso || !endIso) {
-    const match = slotId.match(/^virtual_(\d{2})(\d{2})_(\d{4}-\d{2}-\d{2})$/);
-    if (match) {
-      const [, sh, sm, dateStr] = match;
-      const h = Number(sh);
-      const m = Number(sm);
-      const [year, month, day] = dateStr.split("-").map(Number);
-      startIso = createNaiveLocalIsoString(year, month - 1, day, h, m);
-      let endH = h + 1;
-      let endM = m;
-      if (h === 21 && m === 10) {
-        endH = 22;
-        endM = 0;
-      }
-      endIso = createNaiveLocalIsoString(year, month - 1, day, endH, endM);
-    }
-  }
-
-  // Convertir strings Naive Local a ISO de España con offset (+02:00)
   if (startIso && !startIso.includes("+") && !startIso.includes("Z")) {
     const [dPart, tPart] = startIso.split("T");
     const [year, month, day] = dPart.split("-").map(Number);
@@ -289,7 +364,7 @@ export async function syncSlotInstance(
     endIso = createSpainIsoString(year, month - 1, day, h, m);
   }
 
-  // Limpieza previa de sustitución: Eliminar cualquier evento previo en la franja seleccionada
+  // Limpieza previa de la franja unificada: Eliminar cualquier evento no-estudio previo en la ventana
   if (startIso && endIso) {
     try {
       const targetWindowStart = new Date(startIso).getTime();
@@ -325,14 +400,14 @@ export async function syncSlotInstance(
               calendarId: "primary",
               eventId: ev.id,
             });
-            console.log(`Evento sustituido en la franja: ${ev.summary} (${ev.id})`);
+            console.log(`Evento sustituido en la franja unificada: ${ev.summary} (${ev.id})`);
           } catch (delErr) {
             console.warn(`No se pudo eliminar evento previo ${ev.id}:`, delErr);
           }
         }
       }
     } catch (cleanErr) {
-      console.warn("Fallo en la limpieza previa de franja:", cleanErr);
+      console.warn("Fallo en la limpieza previa de franja unificada:", cleanErr);
     }
   }
 
@@ -358,6 +433,26 @@ export async function syncSlotInstance(
 }
 
 /**
+ * Procesa la sincronización de un bloque de estudio individual (fallback).
+ */
+export async function syncSlotInstance(
+  accessToken: string,
+  slotId: string,
+  examName: string,
+  allSlots: CalendarSlot[] = []
+): Promise<any> {
+  const targetSlot = allSlots.find((s) => s.id === slotId);
+  if (targetSlot) {
+    return syncSlotGroupInstance(
+      accessToken,
+      { startIso: targetSlot.start, endIso: targetSlot.end, slotIds: [slotId] },
+      examName
+    );
+  }
+  return null;
+}
+
+/**
  * Determina si un evento es un bloque de time blocking vacío o genérico (ej: "10:00-11:00", "Bloque Libre", etc.)
  */
 function isEmptyTimeBlock(summary: string | undefined | null): boolean {
@@ -376,13 +471,6 @@ function isEmptyTimeBlock(summary: string | undefined | null): boolean {
 
 /**
  * Programar Jornada de Pesca para Sábados o Domingos.
- * - Si es Sábado: Las tareas reales en esa franja se posponen al Domingo (mismo horario).
- * - Si es Domingo: Las tareas reales en esa franja se atrasan al Sábado (mismo horario).
- * - Tareas a eliminar automáticamente: "getupp", "artefactos a mano", "Estudio: b2" (case-insensitive).
- * - Bloques de time blocking vacíos (ej: "10:00-11:00"): No se mueven.
- * - Si en el día destino no hay tarea real (hay un bloque vacío), la tarea sustituye al bloque vacío sin superponerse.
- * - Crea evento Timed con el color por defecto del calendario y notificación al inicio.
- * - Crea evento All-Day con el color por defecto del calendario "jornada de pesca Hstart-Hend".
  */
 export async function scheduleFishingDay(
   accessToken: string,

@@ -2,7 +2,7 @@
 
 import { CalendarSlot, EffortLevel } from "@/types";
 import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Moon, Trophy, Fish, Lock } from "lucide-react";
-import { format, parseISO, differenceInMinutes } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 interface CalendarViewerProps {
@@ -22,14 +22,13 @@ export default function CalendarViewer({
   isLoading,
   onRefresh,
 }: CalendarViewerProps) {
-  // Determinar max bloques permitidos según nivel de esfuerzo
+  // Determinar max horas permitidas según nivel de esfuerzo
   const requiredSlotsMap: Record<EffortLevel, number> = {
     "1_day": 2,
     "2_days": 4,
     "3_days": 6,
   };
   const maxSlots = requiredSlotsMap[effortLevel];
-  const maxSessions = maxSlots / 2;
 
   // Todos los eventos para el desglose diario
   const displayedEvents = events;
@@ -46,31 +45,7 @@ export default function CalendarViewer({
   });
 
   /**
-   * Lógica para buscar el bloque consecutivo de 1 hora
-   */
-  const findConsecutiveSlot = (targetSlot: CalendarSlot): CalendarSlot | null => {
-    const targetStart = parseISO(targetSlot.start);
-    const targetEnd = parseISO(targetSlot.end);
-
-    const nextSlot = events.find((e) => {
-      if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
-      const start = parseISO(e.start);
-      return Math.abs(differenceInMinutes(start, targetEnd)) <= 5;
-    });
-
-    if (nextSlot) return nextSlot;
-
-    const prevSlot = events.find((e) => {
-      if (e.id === targetSlot.id || (!e.isTimeBlock && !e.isDefaultNightSlot)) return false;
-      const end = parseISO(e.end);
-      return Math.abs(differenceInMinutes(end, targetStart)) <= 5;
-    });
-
-    return prevSlot || null;
-  };
-
-  /**
-   * Manejador al hacer clic en un bloque de 1 hora
+   * Manejador al hacer clic en un bloque individual (1 por 1)
    */
   const handleSlotClick = (slot: CalendarSlot) => {
     if (!slot.isTimeBlock && !slot.isDefaultNightSlot) return;
@@ -78,34 +53,16 @@ export default function CalendarViewer({
     const isAlreadySelected = selectedSlotIds.includes(slot.id);
 
     if (isAlreadySelected) {
-      const sibling = findConsecutiveSlot(slot);
-      const idsToRemove = [slot.id, sibling?.id].filter(Boolean) as string[];
-      onSelectSlots(selectedSlotIds.filter((id) => !idsToRemove.includes(id)));
-      return;
-    }
-
-    const sibling = findConsecutiveSlot(slot);
-
-    if (!sibling) {
-      alert("⚠️ Para cumplir la regla de 1 sesión (2 horas), debes seleccionar un bloque que tenga otra hora libre consecutiva inmediatamente antes o después.");
-      return;
-    }
-
-    const pairIds = [slot.id, sibling.id];
-
-    let newSelected = [...selectedSlotIds];
-
-    pairIds.forEach((id) => {
-      if (!newSelected.includes(id)) {
-        newSelected.push(id);
+      onSelectSlots(selectedSlotIds.filter((id) => id !== slot.id));
+    } else {
+      if (selectedSlotIds.length >= maxSlots) {
+        // Reemplazar el slot más antiguo si se alcanza el máximo de horas
+        const updated = [...selectedSlotIds.slice(1), slot.id];
+        onSelectSlots(updated);
+      } else {
+        onSelectSlots([...selectedSlotIds, slot.id]);
       }
-    });
-
-    if (newSelected.length > maxSlots) {
-      newSelected = newSelected.slice(newSelected.length - maxSlots);
     }
-
-    onSelectSlots(newSelected);
   };
 
   return (
@@ -119,7 +76,7 @@ export default function CalendarViewer({
           <div>
             <h2 className="text-base font-black text-yellow-400 uppercase tracking-wider">Visor de Time Blocking</h2>
             <p className="text-xs text-zinc-400 font-medium">
-              Bloques libres disponibles (incluyendo noches de 21:10-23:00 en L, M, X, J)
+              Selección libre de bloques individuales (1 a 1)
             </p>
           </div>
         </div>
@@ -141,7 +98,7 @@ export default function CalendarViewer({
         <div className="flex items-center gap-2 text-yellow-300">
           <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
           <span className="font-bold uppercase tracking-wider">
-            Misión: <strong className="text-white font-black">{maxSessions} sesión(es)</strong> = <strong className="text-white font-black">{maxSlots} horas</strong>
+            Misión: <strong className="text-white font-black">{maxSlots} horas de estudio</strong>
           </span>
         </div>
         <div className="flex items-center gap-1.5 font-black uppercase tracking-wider">
@@ -210,8 +167,6 @@ export default function CalendarViewer({
                         </div>
                       );
                     }
-
-
 
                     return (
                       <button

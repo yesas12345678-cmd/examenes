@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { syncSlotInstance, createAllDayExamEvent } from "@/lib/googleCalendar";
-import { SyncPayload } from "@/types";
+import { groupConsecutiveSlots, syncSlotGroupInstance, createAllDayExamEvent } from "@/lib/googleCalendar";
+import { SyncPayload, CalendarSlot } from "@/types";
 
 export async function POST(request: Request) {
   try {
@@ -44,28 +44,62 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false, 
-          error: `Has seleccionado ${selectedSlotIds.length} bloques, pero tu nivel de esfuerzo requiere exactamente ${requiredSlots} bloques (${requiredSlots / 2} sesiones de 2h).` 
+          error: `Has seleccionado ${selectedSlotIds.length} bloques, pero tu nivel de esfuerzo requiere exactamente ${requiredSlots} horas.` 
         },
         { status: 400 }
       );
     }
 
-    // 1. Procesar la creación/actualización de bloques de estudio en Google Calendar (Azul + Recordatorio 0m)
+    // Obtener los objetos CalendarSlot correspondientes a los IDs seleccionados
+    const selectedSlots: CalendarSlot[] = (allSlots || []).filter((s) => selectedSlotIds.includes(s.id));
+
+    // Si algún slot no se encontró por ID, reconstruirlo sintéticamente
+    if (selectedSlots.length < selectedSlotIds.length) {
+      for (const id of selectedSlotIds) {
+        if (!selectedSlots.some((s) => s.id === id)) {
+          const match = id.match(/^virtual_(\d{2})(\d{2})_(\d{4}-\d{2}-\d{2})$/);
+          if (match) {
+            const [, sh, sm, dateStr] = match;
+            const h = Number(sh);
+            const m = Number(sm);
+            const [year, month, day] = dateStr.split("-").map(Number);
+            const pad = (num: number) => String(num).padStart(2, "0");
+            const startIso = `${year}-${pad(month)}-${pad(day)}T${pad(h)}:${pad(m)}:00`;
+            let endH = h + 1;
+            let endM = m;
+            if (h === 21 && m === 10) { endH = 22; endM = 0; }
+            if (h === 1 && m === 30) { endH = 2; endM = 0; }
+            const endIso = `${year}-${pad(month)}-${pad(day)}T${pad(endH)}:${pad(endM)}:00`;
+            selectedSlots.push({
+              id,
+              summary: `Bloque`,
+              start: startIso,
+              end: endIso,
+              isTimeBlock: true,
+            });
+          }
+        }
+      }
+    }
+
+    // Agrupar bloques consecutivos del mismo día en un único intervalo
+    const groups = groupConsecutiveSlots(selectedSlots);
+
+    // 1. Procesar la creación de grupos de estudio unificados en Google Calendar (Azul + Recordatorio 0m)
     const updatedCalendarEvents = [];
     const calendarErrors = [];
 
-    for (const instanceId of selectedSlotIds) {
+    for (const group of groups) {
       try {
-        const result = await syncSlotInstance(
+        const result = await syncSlotGroupInstance(
           session.accessToken,
-          instanceId,
-          exam.name,
-          allSlots || []
+          group,
+          exam.name
         );
         updatedCalendarEvents.push(result);
       } catch (err: any) {
-        console.error(`Fallo actualizando bloque ID ${instanceId}:`, err);
-        calendarErrors.push(err.message || instanceId);
+        console.error(`Fallo actualizando grupo de bloques:`, err);
+        calendarErrors.push(err.message || "Error en grupo de bloques");
       }
     }
 
@@ -90,9 +124,9 @@ export async function POST(request: Request) {
       );
     }
 
-    let message = `¡Genial! Se reservaron ${updatedCalendarEvents.length} bloques de estudio en azul`;
+    let message = `¡Genial! Se crearon ${updatedCalendarEvents.length} bloque(s) de estudio unificados en azul`;
     if (allDayExamResult) {
-      message += ` y se creó el examen "Examen: ${exam.name}" de todo el día en tu calendario "examenes".`;
+      message += ` y se registró el examen "Examen: ${exam.name}" de todo el día en tu calendario "examenes".`;
     } else if (allDayExamError) {
       message += `, pero hubo una advertencia al crear el evento de todo el día: ${allDayExamError}`;
     }

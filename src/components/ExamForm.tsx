@@ -29,7 +29,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
       badge: "LVL 1",
       title: "1 Día",
       hours: "2 HORAS TOTAL",
-      description: "1 sesión de 2h consecutivas",
+      description: "2 horas de estudio",
       icon: Gamepad2,
     },
     {
@@ -37,7 +37,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
       badge: "LVL 2",
       title: "2 Días",
       hours: "4 HORAS TOTAL",
-      description: "2 sesiones de 2h (4h en total)",
+      description: "4 horas de estudio",
       icon: Swords,
     },
     {
@@ -45,7 +45,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
       badge: "LVL 3",
       title: "3 Días",
       hours: "6 HORAS TOTAL",
-      description: "3 sesiones de 2h (6h en total)",
+      description: "6 horas de estudio",
       icon: Crown,
     },
   ];
@@ -59,7 +59,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
         </div>
         <div>
           <h2 className="text-base font-black text-yellow-400 uppercase tracking-wider">Configuración del Examen</h2>
-          <p className="text-xs text-zinc-400 font-medium">Define tu misión de estudio para agendar tus bloques</p>
+          <p className="text-xs text-zinc-400 font-medium font-semibold">Define tu misión de estudio para agendar tus bloques</p>
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
         <div>
           <label className="block text-[11px] font-black text-yellow-300 uppercase tracking-widest mb-2 flex items-center gap-1.5">
             <Flame className="w-3.5 h-3.5 text-yellow-400" />
-            Nivel de Dificultad / Sesiones de Estudio
+            Nivel de Dificultad / Horas de Estudio
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -137,7 +137,7 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
           <div className="mt-3.5 p-3 rounded-2xl bg-yellow-950/20 border border-yellow-500/30 text-xs text-zinc-300 flex items-start gap-2.5">
             <Zap className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-relaxed text-zinc-300">
-              <strong className="text-yellow-400 font-bold uppercase tracking-wider">Regla de Parejas Consecutivas:</strong> Cada sesión asigna automáticamente <span className="text-white font-bold">2 horas libres consecutivas</span> al marcar cualquier bloque.
+              <strong className="text-yellow-400 font-bold uppercase tracking-wider">Selección Libre (1 a 1):</strong> Puedes seleccionar tus bloques <span className="text-white font-bold">hora a hora (1 en 1)</span>. Si seleccionas varias horas seguidas, se combinarán automáticamente en un solo bloque continuo en Google Calendar.
             </p>
           </div>
         </div>
@@ -145,5 +145,3 @@ export default function ExamForm({ examData, onChange }: ExamFormProps) {
     </div>
   );
 }
-
-

@@ -95,7 +95,7 @@ export default function Dashboard() {
     if (selectedSlotIds.length !== requiredSlots) {
       setSyncStatus({
         type: "error",
-        message: `Debes seleccionar exactamente ${requiredSlots} bloques de 1 hora (${requiredSlots / 2} sesiones de 2h). Actualmente tienes ${selectedSlotIds.length} seleccionados.`,
+        message: `Debes seleccionar exactamente ${requiredSlots} horas de estudio. Actualmente tienes ${selectedSlotIds.length} seleccionadas.`,
       });
       return;
     }
