@@ -93,12 +93,93 @@ export async function createAllDayExamEvent(accessToken: string, exam: ExamData)
 }
 
 /**
+ * Garantiza que en los sábados exista el evento "pc o pesca" en la franja de 01:00 a 01:30.
+ */
+export async function ensureSaturdayPcPescaSlot(
+  accessToken: string,
+  daysAhead: number = 14
+) {
+  const calendar = getGoogleCalendarClient(accessToken);
+  const now = new Date();
+
+  for (let d = 0; d < daysAhead; d++) {
+    const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+    if (dayDate.getDay() !== 6) continue; // Solo sábados
+
+    const year = dayDate.getFullYear();
+    const month = dayDate.getMonth();
+    const dateNum = dayDate.getDate();
+
+    const start100Iso = createSpainIsoString(year, month, dateNum, 1, 0);
+    const end130Iso = createSpainIsoString(year, month, dateNum, 1, 30);
+    const end230Iso = createSpainIsoString(year, month, dateNum, 2, 30);
+
+    const queryMin = new Date(new Date(start100Iso).getTime() - 60 * 1000).toISOString();
+    const queryMax = new Date(new Date(end230Iso).getTime() + 60 * 1000).toISOString();
+
+    try {
+      const response = await calendar.events.list({
+        calendarId: "primary",
+        timeMin: queryMin,
+        timeMax: queryMax,
+        singleEvents: true,
+      });
+
+      const items = response.data.items || [];
+
+      // Comprobar si ya existe un evento "pc" o "pesca" exactamente de 01:00 a 01:30
+      const has100To130PcPesca = items.some((item) => {
+        const summaryLower = (item.summary || "").toLowerCase();
+        if (!summaryLower.includes("pc") && !summaryLower.includes("pesca")) return false;
+        if (!item.start?.dateTime || !item.end?.dateTime) return false;
+        const dS = new Date(item.start.dateTime);
+        const dE = new Date(item.end.dateTime);
+        return dS.getHours() === 1 && dS.getMinutes() === 0 && dE.getHours() === 1 && dE.getMinutes() === 30;
+      });
+
+      if (!has100To130PcPesca) {
+        const longPcPesca = items.find((item) => {
+          const summaryLower = (item.summary || "").toLowerCase();
+          return summaryLower.includes("pc") || summaryLower.includes("pesca");
+        });
+
+        if (longPcPesca && longPcPesca.id) {
+          await calendar.events.patch({
+            calendarId: "primary",
+            eventId: longPcPesca.id,
+            requestBody: {
+              start: { dateTime: start100Iso },
+              end: { dateTime: end130Iso },
+            },
+          });
+        } else {
+          // Recrear el evento "pc o pesca" de 01:00 a 01:30 en Google Calendar
+          await calendar.events.insert({
+            calendarId: "primary",
+            requestBody: {
+              summary: "pc o pesca",
+              start: { dateTime: start100Iso },
+              end: { dateTime: end130Iso },
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Fallo verificando/recreando pc o pesca en sábado:", err);
+    }
+  }
+}
+
+/**
  * Obtiene los eventos de los próximos X días según los rangos estrictos permitidos por el usuario.
  */
 export async function getUpcomingCalendarEvents(
   accessToken: string,
   daysAhead: number = 14
 ): Promise<CalendarSlot[]> {
+  // Asegurar que el evento 'pc o pesca' de 01:00 a 01:30 esté presente en los sábados
+  await ensureSaturdayPcPescaSlot(accessToken, daysAhead);
+
   const calendar = getGoogleCalendarClient(accessToken);
   const now = new Date();
   const timeMin = now.toISOString();
@@ -182,45 +263,6 @@ export async function getUpcomingCalendarEvents(
     // 5. Solo Sábado Madrugada: 01:30 a 02:30
     if (dayOfWeek === 6) {
       allowedHourRanges.push({ startH: 1, startM: 30, endH: 2, endM: 30, isNight: true });
-
-      // Truncar evento "pc", "pesca", "pc y tareas" que empiece a la 1:00 para dejar libre de 1:30 a 2:30
-      for (const item of items) {
-        if (!item.id) continue;
-        const sLower = (item.summary || "").toLowerCase().trim();
-        if (sLower.includes("pc") || sLower.includes("pesca")) {
-          const evStartStr = item.start?.dateTime;
-          const evEndStr = item.end?.dateTime;
-          if (evStartStr && evEndStr) {
-            const dEvStart = new Date(evStartStr);
-            const dEvEnd = new Date(evEndStr);
-            if (
-              dEvStart.getFullYear() === year &&
-              dEvStart.getMonth() === month &&
-              dEvStart.getDate() === dateNum
-            ) {
-              if (
-                dEvStart.getHours() === 1 &&
-                dEvStart.getMinutes() === 0 &&
-                dEvEnd.getTime() > dEvStart.getTime()
-              ) {
-                try {
-                  const newEndIso = createSpainIsoString(year, month, dateNum, 1, 30);
-                  await calendar.events.patch({
-                    calendarId: "primary",
-                    eventId: item.id,
-                    requestBody: {
-                      end: { dateTime: newEndIso },
-                    },
-                  });
-                  console.log(`Evento ${item.summary} recortado a 1:00-1:30 en Sábado ${dateStr}`);
-                } catch (patchErr) {
-                  console.warn("Error recortando evento pc/pesca:", patchErr);
-                }
-              }
-            }
-          }
-        }
-      }
     }
 
     // Ordenar cronológicamente dentro del día
@@ -364,6 +406,7 @@ export async function syncSlotGroupInstance(
   }
 
   // Limpieza previa de la franja unificada: Eliminar cualquier evento no-estudio previo en la ventana
+  // (salvo 'pc o pesca' de 01:00 a 01:30 si la franja empieza a las 01:30)
   if (startIso && endIso) {
     try {
       const targetWindowStart = new Date(startIso).getTime();
@@ -427,6 +470,9 @@ export async function syncSlotGroupInstance(
     calendarId: "primary",
     requestBody: eventRequestBody,
   });
+
+  // Asegurar que el evento 'pc o pesca' permanezca en la franja 01:00 - 01:30
+  await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return response.data;
 }
@@ -688,6 +734,9 @@ export async function scheduleFishingDay(
       },
     },
   });
+
+  // Asegurar que 'pc o pesca' se mantenga de 01:00 a 01:30 en los sábados
+  await ensureSaturdayPcPescaSlot(accessToken, 14);
 
   return {
     timedEvent: timedEvent.data,
