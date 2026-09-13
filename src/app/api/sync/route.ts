@@ -63,7 +63,7 @@ export async function POST(request: Request) {
             let endH = h + 1;
             let endM = m;
             if (h === 21 && m === 10) { endH = 22; endM = 0; }
-            if (h === 1 && m === 30) { endH = 2; endM = 0; }
+            if (h === 1 && m === 30) { endH = 2; endM = 30; }
             const endIso = `${year}-${pad(month)}-${pad(day)}T${pad(endH)}:${pad(endM)}:00`;
             selectedSlots.push({
               id,

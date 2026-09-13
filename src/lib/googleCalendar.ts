@@ -179,11 +179,11 @@ export async function getUpcomingCalendarEvents(
       allowedHourRanges.push({ startH: 17, startM: 0, endH: 18, endM: 0 });
     }
 
-    // 5. Solo Sábado Madrugada: 01:30 a 02:00
+    // 5. Solo Sábado Madrugada: 01:30 a 02:30
     if (dayOfWeek === 6) {
-      allowedHourRanges.push({ startH: 1, startM: 30, endH: 2, endM: 0, isNight: true });
+      allowedHourRanges.push({ startH: 1, startM: 30, endH: 2, endM: 30, isNight: true });
 
-      // Truncar evento "pc", "pesca", "pc y tareas" que ocupe de 1:00 a 2:00 para dejar libre de 1:30 a 2:00
+      // Truncar evento "pc", "pesca", "pc y tareas" que empiece a la 1:00 para dejar libre de 1:30 a 2:30
       for (const item of items) {
         if (!item.id) continue;
         const sLower = (item.summary || "").toLowerCase().trim();
@@ -201,8 +201,7 @@ export async function getUpcomingCalendarEvents(
               if (
                 dEvStart.getHours() === 1 &&
                 dEvStart.getMinutes() === 0 &&
-                dEvEnd.getHours() === 2 &&
-                dEvEnd.getMinutes() === 0
+                dEvEnd.getTime() > dEvStart.getTime()
               ) {
                 try {
                   const newEndIso = createSpainIsoString(year, month, dateNum, 1, 30);
@@ -215,7 +214,7 @@ export async function getUpcomingCalendarEvents(
                   });
                   console.log(`Evento ${item.summary} recortado a 1:00-1:30 en Sábado ${dateStr}`);
                 } catch (patchErr) {
-                  console.warn("Error recortando evento pc/pesca 1:00-2:00:", patchErr);
+                  console.warn("Error recortando evento pc/pesca:", patchErr);
                 }
               }
             }
