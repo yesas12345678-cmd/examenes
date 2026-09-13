@@ -1,4 +1,17 @@
-export type EffortLevel = '1_day' | '2_days' | '3_days'; // 1 sesión (2h), 2 sesiones (4h), 3 sesiones (6h)
+export type EffortLevel = string | number;
+
+export function getRequiredHours(effortLevel: string | number | undefined | null): number {
+  if (effortLevel === undefined || effortLevel === null) return 2;
+  if (typeof effortLevel === "number") return effortLevel;
+  const parsed = parseInt(effortLevel, 10);
+  if (!isNaN(parsed)) return parsed;
+  const legacyMap: Record<string, number> = {
+    "1_day": 2,
+    "2_days": 4,
+    "3_days": 6,
+  };
+  return legacyMap[effortLevel] || 2;
+}
 
 export interface ExamData {
   name: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarSlot, EffortLevel } from "@/types";
+import { CalendarSlot, EffortLevel, getRequiredHours } from "@/types";
 import { Gamepad2, CheckCircle2, Clock, RefreshCw, AlertCircle, Moon, Trophy, Fish, Lock } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -22,13 +22,8 @@ export default function CalendarViewer({
   isLoading,
   onRefresh,
 }: CalendarViewerProps) {
-  // Determinar max horas permitidas según nivel de esfuerzo
-  const requiredSlotsMap: Record<EffortLevel, number> = {
-    "1_day": 2,
-    "2_days": 4,
-    "3_days": 6,
-  };
-  const maxSlots = requiredSlotsMap[effortLevel];
+  // Determinar max horas permitidas según nivel de esfuerzo / horas elegidas
+  const maxSlots = getRequiredHours(effortLevel);
 
   // Todos los eventos para el desglose diario
   const displayedEvents = events;

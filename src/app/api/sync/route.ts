@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { groupConsecutiveSlots, syncSlotGroupInstance, createAllDayExamEvent } from "@/lib/googleCalendar";
-import { SyncPayload, CalendarSlot } from "@/types";
+import { SyncPayload, CalendarSlot, getRequiredHours } from "@/types";
 
 export async function POST(request: Request) {
   try {
@@ -32,13 +32,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Comprobar requerimiento de slots según nivel de esfuerzo
-    const requiredSlotsMap = {
-      '1_day': 2,
-      '2_days': 4,
-      '3_days': 6,
-    };
-    const requiredSlots = requiredSlotsMap[exam.effortLevel] || 2;
+    // Comprobar requerimiento de slots según nivel de esfuerzo / horas elegidas
+    const requiredSlots = getRequiredHours(exam.effortLevel);
 
     if (selectedSlotIds.length !== requiredSlots) {
       return NextResponse.json(

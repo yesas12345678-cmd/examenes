@@ -5,7 +5,7 @@ import { useSession, signIn } from "next-auth/react";
 import ExamForm from "@/components/ExamForm";
 import FishingForm from "@/components/FishingForm";
 import CalendarViewer from "@/components/CalendarViewer";
-import { ExamData, CalendarSlot, ApiResponse } from "@/types";
+import { ExamData, CalendarSlot, ApiResponse, getRequiredHours } from "@/types";
 import { Gamepad2, Send, CheckCircle2, AlertTriangle, XCircle, LogIn, ShieldCheck, Fish, BookOpen } from "lucide-react";
 
 export default function Dashboard() {
@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [examData, setExamData] = useState<ExamData>({
     name: "",
     date: new Date().toISOString().split("T")[0],
-    effortLevel: "1_day",
+    effortLevel: "2",
   });
 
   // Estado del Calendario y Selección
@@ -85,12 +85,7 @@ export default function Dashboard() {
       return;
     }
 
-    const requiredSlotsMap = {
-      "1_day": 2,
-      "2_days": 4,
-      "3_days": 6,
-    };
-    const requiredSlots = requiredSlotsMap[examData.effortLevel];
+    const requiredSlots = getRequiredHours(examData.effortLevel);
 
     if (selectedSlotIds.length !== requiredSlots) {
       setSyncStatus({
