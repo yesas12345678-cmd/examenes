@@ -166,6 +166,11 @@ export async function createOrEnsurePcPescaForDate(accessToken: string, targetIn
           eventId: existingPcPesca.id,
           requestBody: {
             summary: "pc o pesca",
+            colorId: "10", // Color Verde (Basil) en Google Calendar
+            reminders: {
+              useDefault: false,
+              overrides: [{ method: "popup", minutes: 0 }], // Recordatorio al inicio (0 min)
+            },
             start: { dateTime: start100Iso },
             end: { dateTime: end130Iso },
           },
@@ -176,6 +181,11 @@ export async function createOrEnsurePcPescaForDate(accessToken: string, targetIn
           calendarId: "primary",
           requestBody: {
             summary: "pc o pesca",
+            colorId: "10", // Color Verde (Basil) en Google Calendar
+            reminders: {
+              useDefault: false,
+              overrides: [{ method: "popup", minutes: 0 }], // Recordatorio al inicio (0 min)
+            },
             start: { dateTime: start100Iso },
             end: { dateTime: end130Iso },
           },
